@@ -1,0 +1,16 @@
+shopify:
+  store_url: https://yourstore.myshopify.com
+  client_id: your_client_id_here
+  client_secret: your_client_secret_here
+
+google_sheets:
+  spreadsheet_id: your_spreadsheet_id_here
+  service_account_path: credentials/service_account.json
+
+profit:
+  cost_per_shirt: 12.26
+  default_shipping_label_cost: 0.00
+
+sync:
+  frequency: daily
+  time: "09:00"

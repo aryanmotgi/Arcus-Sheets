@@ -66,8 +66,8 @@ echo ========================================
 echo   PUSHING TO GITHUB
 echo ========================================
 echo.
-echo When prompted for password, use your Personal Access Token:
-echo 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
+echo When prompted for password, use your Personal Access Token
+echo Create token at: https://github.com/settings/tokens
 echo.
 echo (DO NOT use your GitHub password - use the token above!)
 echo.

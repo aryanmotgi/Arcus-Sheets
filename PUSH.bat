@@ -63,7 +63,7 @@ echo.
 echo Username: aryanmotgi
 echo Password: USE THIS TOKEN (copy it):
 echo.
-echo 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
+echo (Use your Personal Access Token from https://github.com/settings/tokens)
 echo.
 echo.
 %GIT_CMD% push -u origin main

@@ -13,8 +13,8 @@ STEP 1: Install Git (ONE TIME ONLY)
 STEP 2: Push to GitHub
 ----------------------
 1. Double-click: PUSH.bat
-2. When asked for password, paste this token:
-   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
+2. When asked for password, use your Personal Access Token
+   (Create one at: https://github.com/settings/tokens)
 
 That's it! Your code will be at:
 https://github.com/aryanmotgi/Arcus-Sheets

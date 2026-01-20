@@ -27,11 +27,9 @@ After installing Git and restarting:
 
 1. **Double-click:** `PUSH_TO_GITHUB_NOW.bat` in your project folder
 2. **Follow the prompts:**
-   - When asked for password, use this token:
-     ```
-     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
-     ```
-   - **DO NOT use your GitHub password** - use the token above!
+   - When asked for password, use your Personal Access Token
+   - Create token at: https://github.com/settings/tokens
+   - **DO NOT use your GitHub password** - use the token!
 
 ### Option B: Manual Commands
 
@@ -62,10 +60,8 @@ git branch -M main
 git push -u origin main
 ```
 
-**When asked for password, use this token:**
-```
-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
-```
+   **When asked for password, use your Personal Access Token**
+   (Create one at: https://github.com/settings/tokens)
 
 ## Step 3: Verify
 

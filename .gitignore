@@ -7,6 +7,9 @@ credentials/.env
 # Google Service Account credentials
 credentials/service_account.json
 
+# Config files with secrets
+config/config.yaml
+
 # Logs
 logs/*.log
 logs/*.txt
@@ -47,5 +50,9 @@ arcus_app.db
 
 # PSL Backup (user-specific data)
 config/psl_backup.json
+
+# Large files
+*.exe
+credentials/*.exe
 
 
