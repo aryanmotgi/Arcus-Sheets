@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="ARCUS">
+    <meta name="theme-color" content="#000000">
+    <meta name="description" content="Analytics dashboard and task management for Arcus">
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- Icons -->
+    <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    
+    <title>Arcus Analytics & Tasks</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Uncial+Antiqua&family=MedievalSharp&family=Ewert&family=Creepster&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Navigation -->
+        <nav class="navbar">
+            <div class="nav-brand">
+                <span class="logo-text">ARCUS</span>
+            </div>
+            <button class="nav-toggle" id="navToggle">☰</button>
+        </nav>
+
+        <!-- Main Container -->
+        <div class="container">
+            <!-- Analytics Section -->
+            <section id="analytics-section" class="section active">
+                <h2 class="section-title">Analytics Dashboard</h2>
+                
+                <!-- Platform Tabs -->
+                <div class="platform-tabs">
+                    <button class="tab-btn active" data-platform="all">All</button>
+                    <button class="tab-btn" data-platform="tiktok">TikTok</button>
+                    <button class="tab-btn" data-platform="instagram">Instagram</button>
+                    <button class="tab-btn" data-platform="sheets">Sheets</button>
+                </div>
+
+                <!-- Analytics Cards -->
+                <div class="analytics-grid" id="analyticsGrid">
+                    <div class="loading">Loading analytics...</div>
+                </div>
+            </section>
+
+            <!-- Tasks Section -->
+            <section id="tasks-section" class="section">
+                <div class="section-header">
+                    <h2 class="section-title">Task Management</h2>
+                    <button class="btn btn-primary" id="addTaskBtn">+ Add Task</button>
+                </div>
+
+                <!-- Filter Tabs -->
+                <div class="filter-tabs">
+                    <button class="filter-btn active" data-status="all">All</button>
+                    <button class="filter-btn" data-status="pending">Pending</button>
+                    <button class="filter-btn" data-status="in_progress">In Progress</button>
+                    <button class="filter-btn" data-status="completed">Completed</button>
+                </div>
+
+                <!-- User Selector -->
+                <div class="user-filter">
+                    <label for="userFilter">Filter by User:</label>
+                    <select id="userFilter" class="select-input">
+                        <option value="">All Users</option>
+                    </select>
+                </div>
+
+                <!-- Tasks List -->
+                <div class="tasks-list" id="tasksList">
+                    <div class="loading">Loading tasks...</div>
+                </div>
+            </section>
+        </div>
+
+        <!-- Add/Edit Task Modal -->
+        <div class="modal" id="taskModal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 id="modalTitle">Add Task</h3>
+                    <button class="modal-close" id="closeModal">&times;</button>
+                </div>
+                <form id="taskForm">
+                    <input type="hidden" id="taskId">
+                    
+                    <div class="form-group">
+                        <label for="taskTitle">Title *</label>
+                        <input type="text" id="taskTitle" class="form-input" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskDescription">Description</label>
+                        <textarea id="taskDescription" class="form-input" rows="3"></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskAssignee">Assign To</label>
+                        <select id="taskAssignee" class="form-input">
+                            <option value="">Unassigned</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskStatus">Status</label>
+                        <select id="taskStatus" class="form-input">
+                            <option value="pending">Pending</option>
+                            <option value="in_progress" selected>In Progress</option>
+                            <option value="completed">Completed</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="taskDeadline">Deadline</label>
+                        <input type="datetime-local" id="taskDeadline" class="form-input">
+                    </div>
+
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Task</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <button class="nav-item active" data-section="analytics">
+                <span class="nav-icon">📊</span>
+                <span class="nav-label">Analytics</span>
+            </button>
+            <button class="nav-item" data-section="tasks">
+                <span class="nav-icon">✓</span>
+                <span class="nav-label">Tasks</span>
+            </button>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+    <script>
+        // Add error handler to catch any unhandled errors
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+            if (!document.querySelector('.error-banner')) {
+                const banner = document.createElement('div');
+                banner.className = 'error-banner';
+                banner.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; background: #f00; color: white; padding: 1rem; z-index: 10000; text-align: center;';
+                banner.innerHTML = `Error: ${event.error ? event.error.message : 'Unknown error'}. Check console (F12) for details.`;
+                document.body.prepend(banner);
+            }
+        });
+    </script>
+</body>
+</html>
+

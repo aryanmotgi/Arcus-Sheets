@@ -1,0 +1,8 @@
+ARCUS Logo Instructions:
+
+1. Save your ARCUS logo image as "logo.png" in the frontend folder
+2. The image should be white/light colored on transparent background
+3. Recommended size: 120px wide, auto height (or height around 32-40px)
+4. If you don't have the logo image, the app will show "ARCUS" in styled text as a fallback
+
+The logo will appear in the navbar with a subtle glow effect matching your brand aesthetic.
