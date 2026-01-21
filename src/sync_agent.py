@@ -44,6 +44,10 @@ class SyncAgent:
         if 'restore psl' in command_lower:
             return self._restore_psl()
         
+        # Create Setup and Costs sheet
+        if any(word in command_lower for word in ['create setup costs', 'create setup and costs', 'setup costs sheet']):
+            return self._create_setup_costs_sheet()
+        
         # General sync help
         return {
             'success': False,
@@ -52,7 +56,8 @@ class SyncAgent:
                       '• "update orders from shopify" - Same as sync orders\n'
                       '• "refresh orders" - Refresh orders from Shopify\n'
                       '• "backup PSL" - Save PSL values to backup\n'
-                      '• "restore PSL" - Restore PSL values from backup'
+                      '• "restore PSL" - Restore PSL values from backup\n'
+                      '• "create setup costs sheet" - Create Setup and Costs tracking sheet'
         }
     
     def _sync_orders(self) -> Dict:
@@ -189,5 +194,26 @@ class SyncAgent:
             return {
                 'status': 'error',
                 'message': f'Restore failed: {str(e)}',
+                'timestamp': datetime.now().isoformat()
+            }
+    
+    def _create_setup_costs_sheet(self) -> Dict:
+        """Create Setup and Costs sheet"""
+        try:
+            from create_setup_costs_sheet import create_setup_costs_sheet
+            create_setup_costs_sheet(self.sheets_manager)
+            return {
+                'status': 'success',
+                'message': '✅ **Setup and Costs Sheet Created!**\n\n'
+                          '📊 A new "Setup and Costs" sheet has been created.\n'
+                          '📍 Check your Google Sheet - you should see a new tab!\n\n'
+                          '💡 This sheet tracks manufacturing and setup costs.',
+                'timestamp': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error creating Setup and Costs sheet: {e}")
+            return {
+                'status': 'error',
+                'message': f'Failed to create sheet: {str(e)}',
                 'timestamp': datetime.now().isoformat()
             }
