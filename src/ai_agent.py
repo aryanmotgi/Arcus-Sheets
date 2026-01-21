@@ -262,50 +262,74 @@ class SheetsAIAgent:
         return response
     
     def _sync_orders(self) -> Dict:
-        """Sync orders from Shopify to Google Sheets with detailed progress"""
-        logger.info("Starting order sync from Shopify to Google Sheets...")
+        """Sync ALL orders from Shopify to Google Sheets - pulls fresh data directly from Shopify"""
+        logger.info("🔄 Starting FULL sync from Shopify to Google Sheets...")
+        logger.info("📡 Fetching ALL orders directly from Shopify (no cache, no filters)...")
+        
         try:
             # Get current order count before sync
             try:
                 sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
                 existing_data = sheet.get_all_values()
                 orders_before = len(existing_data) - 1 if existing_data else 0  # -1 for header
+                logger.info(f"📊 Current orders in sheet: {orders_before}")
             except:
                 orders_before = 0
+                logger.info("📊 Starting fresh - no existing orders found")
             
-            # Sync orders
-            logger.info("Fetching orders from Shopify...")
+            # Sync orders - this will fetch ALL orders from Shopify
+            logger.info("🔄 Syncing orders from Shopify...")
+            logger.info("⏳ This may take a moment - fetching fresh data from Shopify...")
+            
+            # Call update_orders_sheet which fetches directly from Shopify API
             update_orders_sheet()
+            
+            logger.info("✅ Sync completed! Verifying...")
             
             # Get new order count
             try:
                 sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
                 updated_data = sheet.get_all_values()
                 orders_after = len(updated_data) - 1 if updated_data else 0
-            except:
+                logger.info(f"📊 Orders in sheet after sync: {orders_after}")
+            except Exception as e:
+                logger.error(f"Error reading sheet after sync: {e}")
                 orders_after = 0
             
             orders_synced = orders_after
+            new_orders = orders_after - orders_before
+            
+            message = f'✅ **Sync Complete!**\n\n'
+            message += f'📊 **Summary:**\n'
+            message += f'  • Total orders in sheet: {orders_synced}\n'
+            if new_orders > 0:
+                message += f'  • New orders added: {new_orders}\n'
+            elif orders_before > 0:
+                message += f'  • Sheet refreshed with latest data\n'
+            message += f'\n🔄 All orders synced from Shopify to Google Sheets'
             
             return {
                 'status': 'success',
-                'message': f'✅ Orders synced successfully!\n\n📊 Synced {orders_synced} orders from Shopify to Google Sheets',
+                'message': message,
                 'data': {
                     'orders_synced': orders_synced,
                     'orders_before': orders_before,
-                    'orders_after': orders_after
+                    'orders_after': orders_after,
+                    'new_orders': new_orders
                 },
                 'timestamp': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Error syncing orders: {e}", exc_info=True)
+            logger.error(f"❌ Error syncing orders: {e}", exc_info=True)
             error_msg = str(e)
-            if "Shopify" in error_msg or "credentials" in error_msg.lower():
-                error_msg = f"❌ Shopify connection error: {error_msg}\n\n💡 Check your Shopify API credentials in environment variables."
-            elif "Google" in error_msg or "service_account" in error_msg.lower():
-                error_msg = f"❌ Google Sheets error: {error_msg}\n\n💡 Check your GOOGLE_CREDENTIALS environment variable."
+            
+            # Better error messages
+            if "Shopify" in error_msg or "credentials" in error_msg.lower() or "token" in error_msg.lower():
+                error_msg = f"❌ **Shopify Connection Error**\n\n{error_msg}\n\n💡 **Fix:**\n  • Check SHOPIFY_STORE_URL\n  • Check SHOPIFY_CLIENT_ID\n  • Check SHOPIFY_CLIENT_SECRET\n  • Verify credentials in Render environment variables"
+            elif "Google" in error_msg or "service_account" in error_msg.lower() or "credentials" in error_msg.lower():
+                error_msg = f"❌ **Google Sheets Error**\n\n{error_msg}\n\n💡 **Fix:**\n  • Check GOOGLE_CREDENTIALS in Render\n  • Verify service account has access\n  • Check GOOGLE_SHEETS_SPREADSHEET_ID"
             else:
-                error_msg = f"❌ Sync error: {error_msg}"
+                error_msg = f"❌ **Sync Error**\n\n{error_msg}\n\n💡 Check Render logs for more details"
             
             return {
                 'status': 'error',

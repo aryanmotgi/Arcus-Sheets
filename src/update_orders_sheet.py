@@ -98,10 +98,15 @@ def update_orders_sheet():
     processor = DataProcessor()
     
     try:
-        # Fetch data from Shopify
-        logger.info("Fetching data from Shopify...")
-        orders = shopify.get_orders()
-        logger.info(f"Fetched {len(orders)} orders")
+        # Fetch ALL orders from Shopify (no filters - get everything)
+        logger.info("Fetching ALL orders from Shopify (fresh data)...")
+        orders = shopify.get_orders(
+            limit=250,  # Max per page
+            status='any',  # Get all statuses
+            created_at_min=None,  # No date filter - get everything
+            since_id=None  # No ID filter - get everything
+        )
+        logger.info(f"✅ Fetched {len(orders)} orders from Shopify")
         
         # Process orders
         orders_df = processor.process_orders(orders)
