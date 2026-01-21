@@ -119,12 +119,12 @@ class SheetsAIAgent:
         }
         
         try:
-            # Sync/Sync orders
-            if any(word in command_lower for word in ['sync', 'update', 'refresh']):
-                if 'order' in command_lower or 'sheet' in command_lower:
+            # Sync/Sync orders - More flexible matching
+            if any(word in command_lower for word in ['sync', 'update', 'refresh', 'pull', 'fetch', 'get orders']):
+                if any(word in command_lower for word in ['order', 'sheet', 'shopify', 'data', 'everything', 'all']):
                     result = self._sync_orders()
-                    response['success'] = True
-                    response['message'] = "Orders synced successfully!"
+                    response['success'] = result.get('status') == 'success'
+                    response['message'] = result.get('message', 'Orders synced!')
                     response['data'] = result
                     return response
             
@@ -223,26 +223,37 @@ class SheetsAIAgent:
                 response['data'] = result
                 return response
             
-            # Default: help message
-            response['message'] = f"I can help you with:\n" \
-                                f"- Syncing orders: 'sync orders' or 'update orders'\n" \
-                                f"- Revenue info: 'show revenue' or 'total sales'\n" \
-                                f"- Orders summary: 'list orders' or 'orders summary'\n" \
-                                f"- Product sales: 'product sales' or 'items sold'\n" \
-                                f"- Profit breakdown: 'show profit' or 'profit breakdown'\n" \
-                                f"- Top products: 'top products' or 'best selling'\n" \
-                                f"- Top customers: 'top customers' or 'best customers'\n" \
-                                f"- Revenue trends: 'revenue trends' or 'sales trends'\n" \
-                                f"- Low stock: 'low stock alert' or 'inventory'\n" \
-                                f"- Date range: 'orders from last week' or 'this month'\n" \
-                                f"- Format sheet: 'format orders sheet' or 'style sheet'\n" \
-                                f"- Change colors: 'make column A blue' or 'color header red'\n" \
-                                f"- Modify columns: 'make column A wider' or 'widen product name'\n" \
-                                f"- Borders: 'add borders' or 'remove borders'\n" \
-                                f"- Alignment: 'center all text' or 'align left'\n" \
-                                f"- PSL backup: 'backup PSL'\n" \
-                                f"- PSL restore: 'restore PSL'\n\n" \
-                                f"Your command: '{command}'"
+            # Try to understand the intent better
+            # If command contains numbers or specific requests, be more helpful
+            if any(char.isdigit() for char in command):
+                response['message'] = f"I see you're asking about something specific. Try:\n" \
+                                    f"- 'sync orders' to update all orders\n" \
+                                    f"- 'show revenue' to see sales totals\n" \
+                                    f"- 'top 5 products' to see best sellers\n" \
+                                    f"- Or ask me to format/modify the sheet\n\n" \
+                                    f"Your command: '{command}'"
+            else:
+                # Default: more helpful error message
+                response['message'] = f"🤖 I can help you with:\n\n" \
+                                    f"📊 **Data & Sync:**\n" \
+                                    f"  • 'sync orders' - Update all orders from Shopify\n" \
+                                    f"  • 'show revenue' - Get sales totals\n" \
+                                    f"  • 'orders summary' - Overview of all orders\n" \
+                                    f"  • 'product sales' - Product breakdown\n" \
+                                    f"  • 'profit breakdown' - Profit analysis\n" \
+                                    f"  • 'top products' - Best sellers\n" \
+                                    f"  • 'top customers' - Best customers\n\n" \
+                                    f"📝 **Sheet Management:**\n" \
+                                    f"  • 'format orders sheet' - Style the sheet\n" \
+                                    f"  • 'fix net profit function' - Update formulas\n" \
+                                    f"  • 'swap shipping cost with PSL' - Move columns\n" \
+                                    f"  • 'add borders' - Format cells\n\n" \
+                                    f"💾 **Backup & History:**\n" \
+                                    f"  • 'backup PSL' - Save PSL values\n" \
+                                    f"  • 'show change log' - View changes\n" \
+                                    f"  • 'revert last change' - Undo\n\n" \
+                                    f"❓ I didn't understand: '{command}'\n" \
+                                    f"Try one of the commands above!"
             
         except Exception as e:
             logger.error(f"Error processing command: {e}", exc_info=True)
@@ -251,20 +262,54 @@ class SheetsAIAgent:
         return response
     
     def _sync_orders(self) -> Dict:
-        """Sync orders from Shopify to Google Sheets"""
-        logger.info("Syncing orders from Shopify to Google Sheets...")
+        """Sync orders from Shopify to Google Sheets with detailed progress"""
+        logger.info("Starting order sync from Shopify to Google Sheets...")
         try:
+            # Get current order count before sync
+            try:
+                sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
+                existing_data = sheet.get_all_values()
+                orders_before = len(existing_data) - 1 if existing_data else 0  # -1 for header
+            except:
+                orders_before = 0
+            
+            # Sync orders
+            logger.info("Fetching orders from Shopify...")
             update_orders_sheet()
+            
+            # Get new order count
+            try:
+                sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
+                updated_data = sheet.get_all_values()
+                orders_after = len(updated_data) - 1 if updated_data else 0
+            except:
+                orders_after = 0
+            
+            orders_synced = orders_after
+            
             return {
                 'status': 'success',
-                'message': 'Orders synced successfully',
+                'message': f'✅ Orders synced successfully!\n\n📊 Synced {orders_synced} orders from Shopify to Google Sheets',
+                'data': {
+                    'orders_synced': orders_synced,
+                    'orders_before': orders_before,
+                    'orders_after': orders_after
+                },
                 'timestamp': datetime.now().isoformat()
             }
         except Exception as e:
-            logger.error(f"Error syncing orders: {e}")
+            logger.error(f"Error syncing orders: {e}", exc_info=True)
+            error_msg = str(e)
+            if "Shopify" in error_msg or "credentials" in error_msg.lower():
+                error_msg = f"❌ Shopify connection error: {error_msg}\n\n💡 Check your Shopify API credentials in environment variables."
+            elif "Google" in error_msg or "service_account" in error_msg.lower():
+                error_msg = f"❌ Google Sheets error: {error_msg}\n\n💡 Check your GOOGLE_CREDENTIALS environment variable."
+            else:
+                error_msg = f"❌ Sync error: {error_msg}"
+            
             return {
                 'status': 'error',
-                'message': str(e),
+                'message': error_msg,
                 'timestamp': datetime.now().isoformat()
             }
     

@@ -18,10 +18,48 @@ logger = logging.getLogger(__name__)
 
 
 def load_config():
-    """Load configuration from config.yaml"""
+    """Load configuration from environment variables or config.yaml"""
+    import os
+    
+    # Try to load from environment variables first
+    config = {}
+    
+    # Shopify config from env
+    if os.getenv('SHOPIFY_STORE_URL'):
+        config['shopify'] = {
+            'store_url': os.getenv('SHOPIFY_STORE_URL'),
+            'client_id': os.getenv('SHOPIFY_CLIENT_ID', ''),
+            'client_secret': os.getenv('SHOPIFY_CLIENT_SECRET', '')
+        }
+    
+    # Google Sheets config from env
+    if os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID'):
+        config['google_sheets'] = {
+            'spreadsheet_id': os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID'),
+            'service_account_path': os.getenv('GOOGLE_CREDENTIALS')  # Will be handled differently
+        }
+    
+    # If we have env vars, return config
+    if config.get('shopify') and config.get('google_sheets'):
+        return config
+    
+    # Fall back to config.yaml file
     config_path = Path(__file__).parent.parent / "config" / "config.yaml"
-    with open(config_path, 'r') as f:
-        return yaml.safe_load(f)
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            file_config = yaml.safe_load(f)
+            if file_config:
+                return file_config
+    
+    # If neither exists, raise error
+    raise ValueError(
+        "Configuration not found! Please set environment variables:\n"
+        "- SHOPIFY_STORE_URL\n"
+        "- SHOPIFY_CLIENT_ID\n"
+        "- SHOPIFY_CLIENT_SECRET\n"
+        "- GOOGLE_SHEETS_SPREADSHEET_ID\n"
+        "- GOOGLE_CREDENTIALS"
+    )
 
 
 def update_orders_sheet():
@@ -33,20 +71,27 @@ def update_orders_sheet():
     config = load_config()
     
     # Initialize clients
-    shopify_config = config['shopify']
-    if shopify_config.get('client_id') and shopify_config.get('client_secret'):
-        shopify = ShopifyClient(
-            store_url=shopify_config['store_url'],
-            client_id=shopify_config['client_id'],
-            client_secret=shopify_config['client_secret']
-        )
-    else:
-        raise ValueError("Shopify credentials not found in config.yaml")
+    shopify_config = config.get('shopify', {})
+    if not shopify_config.get('store_url'):
+        raise ValueError("Shopify store URL not found in configuration")
+    if not shopify_config.get('client_id') or not shopify_config.get('client_secret'):
+        raise ValueError("Shopify client_id or client_secret not found in configuration")
     
-    # Initialize sheets manager
+    shopify = ShopifyClient(
+        store_url=shopify_config['store_url'],
+        client_id=shopify_config['client_id'],
+        client_secret=shopify_config['client_secret']
+    )
+    
+    # Initialize sheets manager - support both file path and env var
+    import os
+    google_credentials_json = os.getenv('GOOGLE_CREDENTIALS')
+    service_account_path = config['google_sheets'].get('service_account_path')
+    
     manager = SheetsManager(
         spreadsheet_id=config['google_sheets']['spreadsheet_id'],
-        service_account_path=config['google_sheets']['service_account_path']
+        service_account_path=service_account_path if not google_credentials_json else None,
+        google_credentials_json=google_credentials_json
     )
     
     # Initialize data processor
