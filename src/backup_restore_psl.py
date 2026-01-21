@@ -61,9 +61,14 @@ def backup_psl_values():
         return False
     
     try:
+        import os
+        google_credentials_json = os.getenv('GOOGLE_CREDENTIALS')
+        service_account_path = config['google_sheets'].get('service_account_path')
+        
         manager = SheetsManager(
             spreadsheet_id=config['google_sheets']['spreadsheet_id'],
-            service_account_path=config['google_sheets']['service_account_path']
+            service_account_path=service_account_path if not google_credentials_json else None,
+            google_credentials_json=google_credentials_json
         )
         sheet = manager.create_sheet_if_not_exists("Orders")
         
@@ -150,9 +155,14 @@ def restore_psl_values():
             logger.error("Failed to load config")
             return False
         
+        import os
+        google_credentials_json = os.getenv('GOOGLE_CREDENTIALS')
+        service_account_path = config['google_sheets'].get('service_account_path')
+        
         manager = SheetsManager(
             spreadsheet_id=config['google_sheets']['spreadsheet_id'],
-            service_account_path=config['google_sheets']['service_account_path']
+            service_account_path=service_account_path if not google_credentials_json else None,
+            google_credentials_json=google_credentials_json
         )
         sheet = manager.create_sheet_if_not_exists("Orders")
         
