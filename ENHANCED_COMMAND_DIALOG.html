@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 25px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+    
+    h1 {
+      color: #333;
+      font-size: 26px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #4caf50;
+      animation: pulse 2s infinite;
+    }
+    
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    
+    .quick-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    
+    .stat-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 15px;
+      border-radius: 8px;
+      text-align: center;
+    }
+    
+    .stat-label {
+      font-size: 11px;
+      opacity: 0.9;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .stat-value {
+      font-size: 20px;
+      font-weight: bold;
+      margin-top: 5px;
+    }
+    
+    .input-section {
+      margin-bottom: 20px;
+      position: relative;
+    }
+    
+    .input-wrapper {
+      position: relative;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 14px 45px 14px 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: all 0.3s;
+    }
+    
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .command-history-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: #f5f5f5;
+      border: none;
+      border-radius: 4px;
+      padding: 6px 10px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .command-history-btn:hover {
+      background: #e0e0e0;
+    }
+    
+    .quick-commands {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    
+    .quick-btn {
+      padding: 12px;
+      background: linear-gradient(135deg, #f5f5f5 0%, #e8e8e8 100%);
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      text-align: center;
+      transition: all 0.2s;
+      font-weight: 500;
+    }
+    
+    .quick-btn:hover {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border-color: #667eea;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.5);
+    }
+    
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .response {
+      margin-top: 20px;
+      padding: 20px;
+      border-radius: 10px;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+    
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    
+    .response.success {
+      background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+      border: 2px solid #4caf50;
+      color: #155724;
+      display: block;
+    }
+    
+    .response.error {
+      background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+      border: 2px solid #f44336;
+      color: #721c24;
+      display: block;
+    }
+    
+    .response h3 {
+      margin-bottom: 12px;
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .response-content {
+      margin-top: 10px;
+    }
+    
+    .formatted-data {
+      background: rgba(0,0,0,0.05);
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 10px;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    
+    .data-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(0,0,0,0.1);
+    }
+    
+    .data-item:last-child {
+      border-bottom: none;
+    }
+    
+    .data-label {
+      font-weight: 600;
+      color: #555;
+    }
+    
+    .data-value {
+      color: #333;
+      font-weight: 500;
+    }
+    
+    .currency {
+      color: #4caf50;
+      font-weight: bold;
+    }
+    
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 30px;
+      color: #667eea;
+    }
+    
+    .loading.active {
+      display: block;
+    }
+    
+    .spinner {
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #667eea;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .command-history {
+      display: none;
+      margin-top: 15px;
+      padding: 15px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    
+    .command-history.active {
+      display: block;
+    }
+    
+    .history-item {
+      padding: 8px 12px;
+      margin: 5px 0;
+      background: white;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border-left: 3px solid #667eea;
+    }
+    
+    .history-item:hover {
+      background: #e8e8e8;
+      transform: translateX(5px);
+    }
+    
+    .examples {
+      margin-top: 20px;
+      padding: 15px;
+      background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+      border-radius: 8px;
+      font-size: 12px;
+      color: #666;
+    }
+    
+    .examples h4 {
+      margin-bottom: 10px;
+      color: #333;
+      font-size: 14px;
+    }
+    
+    .examples-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+    
+    .example-item {
+      padding: 6px 10px;
+      background: white;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .example-item:hover {
+      background: #667eea;
+      color: white;
+    }
+    
+    .action-buttons {
+      display: flex;
+      gap: 10px;
+      margin-top: 15px;
+    }
+    
+    .action-btn {
+      flex: 1;
+      padding: 10px;
+      background: white;
+      border: 2px solid #667eea;
+      color: #667eea;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    
+    .action-btn:hover {
+      background: #667eea;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>
+        <span>🤖</span>
+        AI Agent Command Interface
+        <span class="status-indicator"></span>
+      </h1>
+    </div>
+    
+    <div class="quick-stats" id="quickStats" style="display: none;">
+      <div class="stat-card">
+        <div class="stat-label">Revenue</div>
+        <div class="stat-value" id="statRevenue">$0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Orders</div>
+        <div class="stat-value" id="statOrders">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Profit</div>
+        <div class="stat-value" id="statProfit">$0</div>
+      </div>
+    </div>
+    
+    <div class="input-section">
+      <label for="commandInput">Enter your command:</label>
+      <div class="input-wrapper">
+        <input 
+          type="text" 
+          id="commandInput" 
+          placeholder="e.g., sync orders, show revenue, top products..."
+          onkeypress="if(event.key==='Enter') executeCommand()"
+          list="commandSuggestions"
+        >
+        <button class="command-history-btn" onclick="toggleHistory()" title="Command History">📜</button>
+      </div>
+      
+      <div class="command-history" id="commandHistory">
+        <strong>Recent Commands:</strong>
+        <div id="historyList"></div>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <div style="font-weight: 600; color: #333; margin-bottom: 10px; font-size: 14px;">📊 Data & Analytics</div>
+      <div class="quick-commands">
+        <div class="quick-btn" onclick="setCommand('sync orders')">🔄 Sync Orders</div>
+        <div class="quick-btn" onclick="setCommand('show revenue')">💰 Revenue</div>
+        <div class="quick-btn" onclick="setCommand('orders summary')">📊 Summary</div>
+        <div class="quick-btn" onclick="setCommand('profit breakdown')">📈 Profit</div>
+        <div class="quick-btn" onclick="setCommand('top products')">🏆 Top Products</div>
+        <div class="quick-btn" onclick="setCommand('top customers')">👥 Top Customers</div>
+        <div class="quick-btn" onclick="setCommand('revenue trends')">📉 Trends</div>
+        <div class="quick-btn" onclick="setCommand('low stock alert')">⚠️ Low Stock</div>
+        <div class="quick-btn" onclick="setCommand('backup PSL')">💾 Backup</div>
+      </div>
+    </div>
+    
+    <div style="margin-bottom: 20px;">
+      <div style="font-weight: 600; color: #333; margin-bottom: 10px; font-size: 14px;">🎨 Sheet Management</div>
+      <div class="quick-commands">
+        <div class="quick-btn" onclick="setCommand('format orders sheet')">✨ Format Sheet</div>
+        <div class="quick-btn" onclick="setCommand('center all text')">↔️ Center Text</div>
+        <div class="quick-btn" onclick="setCommand('add borders')">🔲 Add Borders</div>
+        <div class="quick-btn" onclick="setCommand('make column A wider')">📏 Widen Column</div>
+        <div class="quick-btn" onclick="setCommand('color header blue')">🎨 Color Header</div>
+        <div class="quick-btn" onclick="setCommand('make product name column wider')">📐 Resize Column</div>
+      </div>
+    </div>
+    
+    <button id="executeBtn" onclick="executeCommand()">Execute Command</button>
+    
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Processing your command...</div>
+    </div>
+    
+    <div class="response" id="response">
+      <h3 id="responseTitle"></h3>
+      <div class="response-content" id="responseMessage"></div>
+      <div class="formatted-data" id="responseData" style="display: none;"></div>
+      <div class="action-buttons" id="actionButtons" style="display: none;">
+        <button class="action-btn" onclick="copyResults()">📋 Copy Results</button>
+        <button class="action-btn" onclick="exportResults()">💾 Export CSV</button>
+      </div>
+    </div>
+    
+    <div class="examples">
+      <h4>💡 Example Commands:</h4>
+      <div class="examples-grid">
+        <div class="example-item" onclick="setCommand('sync orders')">Sync Orders</div>
+        <div class="example-item" onclick="setCommand('show revenue')">Show Revenue</div>
+        <div class="example-item" onclick="setCommand('format orders sheet')">Format Sheet</div>
+        <div class="example-item" onclick="setCommand('make column A blue')">Color Column</div>
+        <div class="example-item" onclick="setCommand('center all text')">Center Text</div>
+        <div class="example-item" onclick="setCommand('add borders')">Add Borders</div>
+        <div class="example-item" onclick="setCommand('make product name wider')">Widen Column</div>
+        <div class="example-item" onclick="setCommand('top products')">Top Products</div>
+      </div>
+    </div>
+  </div>
+  
+  <script>
+    var commandHistory = JSON.parse(localStorage.getItem('commandHistory') || '[]');
+    var currentResults = null;
+    
+    // Load quick stats on page load
+    window.onload = function() {
+      loadQuickStats();
+      loadHistory();
+    };
+    
+    function loadQuickStats() {
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.success && result.data.success) {
+            var revenue = result.data.data.revenue;
+            if (revenue) {
+              document.getElementById('statRevenue').textContent = revenue.total_revenue || '$0';
+              document.getElementById('statProfit').textContent = revenue.net_profit || '$0';
+              document.getElementById('quickStats').style.display = 'grid';
+            }
+          }
+        })
+        .withFailureHandler(function() {})
+        .executeCommand('show revenue');
+    }
+    
+    function loadHistory() {
+      var historyList = document.getElementById('historyList');
+      historyList.innerHTML = '';
+      
+      if (commandHistory.length === 0) {
+        historyList.innerHTML = '<div style="padding: 10px; color: #999; text-align: center;">No command history yet</div>';
+        return;
+      }
+      
+      commandHistory.slice(-10).reverse().forEach(function(cmd) {
+        var item = document.createElement('div');
+        item.className = 'history-item';
+        item.textContent = cmd;
+        item.onclick = function() {
+          document.getElementById('commandInput').value = cmd;
+          toggleHistory();
+          executeCommand();
+        };
+        historyList.appendChild(item);
+      });
+    }
+    
+    function toggleHistory() {
+      var history = document.getElementById('commandHistory');
+      history.classList.toggle('active');
+    }
+    
+    function setCommand(command) {
+      document.getElementById('commandInput').value = command;
+      executeCommand();
+    }
+    
+    function executeCommand() {
+      var command = document.getElementById('commandInput').value.trim();
+      
+      if (!command) {
+        alert('Please enter a command');
+        return;
+      }
+      
+      // Add to history
+      if (!commandHistory.includes(command)) {
+        commandHistory.push(command);
+        if (commandHistory.length > 50) {
+          commandHistory.shift();
+        }
+        localStorage.setItem('commandHistory', JSON.stringify(commandHistory));
+        loadHistory();
+      }
+      
+      var loading = document.getElementById('loading');
+      var response = document.getElementById('response');
+      var executeBtn = document.getElementById('executeBtn');
+      var responseTitle = document.getElementById('responseTitle');
+      var responseMessage = document.getElementById('responseMessage');
+      var responseData = document.getElementById('responseData');
+      var actionButtons = document.getElementById('actionButtons');
+      
+      // Show loading
+      loading.classList.add('active');
+      response.style.display = 'none';
+      executeBtn.disabled = true;
+      
+      // Execute command
+      google.script.run
+        .withSuccessHandler(function(result) {
+          loading.classList.remove('active');
+          executeBtn.disabled = false;
+          currentResults = result;
+          
+          if (result.success && result.data.success) {
+            response.className = 'response success';
+            responseTitle.innerHTML = '✓ Success';
+            responseMessage.textContent = result.data.message || 'Command executed successfully';
+            
+            // Format and display data
+            if (result.data.data) {
+              var formatted = formatData(result.data.data);
+              responseData.innerHTML = formatted;
+              responseData.style.display = 'block';
+              actionButtons.style.display = 'flex';
+            } else {
+              responseData.style.display = 'none';
+              actionButtons.style.display = 'none';
+            }
+            
+            response.style.display = 'block';
+            
+            // Update quick stats if revenue command
+            if (command.toLowerCase().includes('revenue')) {
+              loadQuickStats();
+            }
+          } else {
+            response.className = 'response error';
+            responseTitle.innerHTML = '✗ Error';
+            var errorMsg = result.success ? (result.data.message || 'Command failed') : result.message;
+            responseMessage.textContent = errorMsg;
+            responseData.textContent = JSON.stringify(result, null, 2);
+            responseData.style.display = 'block';
+            actionButtons.style.display = 'none';
+            response.style.display = 'block';
+          }
+        })
+        .withFailureHandler(function(error) {
+          loading.classList.remove('active');
+          executeBtn.disabled = false;
+          
+          response.className = 'response error';
+          responseTitle.innerHTML = '✗ Error';
+          responseMessage.textContent = 'Failed to execute command: ' + error.message;
+          responseData.textContent = error.toString();
+          responseData.style.display = 'block';
+          actionButtons.style.display = 'none';
+          response.style.display = 'block';
+        })
+        .executeCommand(command);
+    }
+    
+    function formatData(data) {
+      var html = '';
+      
+      // Revenue data
+      if (data.revenue) {
+        html += '<div class="data-item"><span class="data-label">Total Revenue</span><span class="data-value currency">' + (data.revenue.total_revenue || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Net Profit</span><span class="data-value currency">' + (data.revenue.net_profit || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Units Sold</span><span class="data-value">' + (data.revenue.units_sold || '0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Shopify Payout</span><span class="data-value currency">' + (data.revenue.shopify_payout || '$0') + '</span></div>';
+      }
+      
+      // Orders summary
+      if (data.total_orders !== undefined) {
+        html += '<div class="data-item"><span class="data-label">Total Orders</span><span class="data-value">' + data.total_orders + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Total Value</span><span class="data-value currency">$' + (data.total_value || 0).toFixed(2) + '</span></div>';
+      }
+      
+      // Profit breakdown
+      if (data.profit_breakdown) {
+        var profit = data.profit_breakdown;
+        html += '<div class="data-item"><span class="data-label">Total Revenue</span><span class="data-value currency">' + (profit.total_revenue || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Product Costs</span><span class="data-value currency">' + (profit.total_product_costs || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Total Costs</span><span class="data-value currency">' + (profit.total_costs || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Net Profit</span><span class="data-value currency">' + (profit.net_profit || '$0') + '</span></div>';
+        html += '<div class="data-item"><span class="data-label">Profit Per Shirt</span><span class="data-value currency">' + (profit.profit_per_shirt || '$0') + '</span></div>';
+      }
+      
+      // Status breakdown
+      if (data.status_breakdown) {
+        html += '<div style="margin-top: 15px; padding-top: 15px; border-top: 2px solid rgba(0,0,0,0.1);"><strong>Status Breakdown:</strong></div>';
+        for (var status in data.status_breakdown) {
+          html += '<div class="data-item"><span class="data-label">' + status + '</span><span class="data-value">' + data.status_breakdown[status] + '</span></div>';
+        }
+      }
+      
+      if (!html) {
+        html = '<pre style="white-space: pre-wrap;">' + JSON.stringify(data, null, 2) + '</pre>';
+      }
+      
+      return html;
+    }
+    
+    function copyResults() {
+      if (currentResults) {
+        var text = JSON.stringify(currentResults, null, 2);
+        navigator.clipboard.writeText(text).then(function() {
+          alert('Results copied to clipboard!');
+        });
+      }
+    }
+    
+    function exportResults() {
+      if (currentResults && currentResults.data && currentResults.data.data) {
+        // Simple CSV export
+        var csv = '';
+        var data = currentResults.data.data;
+        
+        if (data.revenue) {
+          csv = 'Metric,Value\n';
+          csv += 'Total Revenue,' + (data.revenue.total_revenue || '') + '\n';
+          csv += 'Net Profit,' + (data.revenue.net_profit || '') + '\n';
+          csv += 'Units Sold,' + (data.revenue.units_sold || '') + '\n';
+          csv += 'Shopify Payout,' + (data.revenue.shopify_payout || '') + '\n';
+        }
+        
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'ai-agent-results.csv';
+        a.click();
+      }
+    }
+  </script>
+</body>
+</html>

@@ -1,90 +1,90 @@
-# Quick Start Guide - Using on Your Phone
+# 🚀 START HERE - Quick Setup Guide
 
-## Your Setup:
-- **Computer IP Address**: `192.168.1.242`
-- **Backend URL**: `http://192.168.1.242:8000`
-- **Frontend URL**: `http://192.168.1.242:8080`
+Follow these steps in order to get your AI Agent working with Google Sheets!
 
-## Step-by-Step Instructions:
+---
 
-### Step 1: Start the Backend Server
-1. Open a terminal/command prompt
-2. Navigate to your project folder:
-   ```bash
-   cd "C:\Users\Aryan\OneDrive\Rishab Fun Code"
-   ```
-3. Run the backend:
-   ```bash
-   python run_app.py
-   ```
-4. You should see: `Application startup complete. Uvicorn running on http://0.0.0.0:8000`
+## ⚡ Quick Setup (5 Minutes)
 
-**Keep this terminal open!** The server needs to keep running.
+### Step 1: Install Dependencies
+```bash
+pip install -r requirements.txt
+```
 
-### Step 2: Start the Frontend Server
-1. Open a **NEW** terminal/command prompt window
-2. Navigate to the frontend folder:
-   ```bash
-   cd "C:\Users\Aryan\OneDrive\Rishab Fun Code\frontend"
-   ```
-3. Start a simple web server:
-   ```bash
-   python -m http.server 8080
-   ```
-4. You should see: `Serving HTTP on 0.0.0.0 port 8080`
+### Step 2: Set Up Google Sheets Access
+1. Download service account JSON from Google Cloud Console
+2. Save it as: `credentials/service_account.json`
+3. Share your Google Sheet with the service account email
+   - Find the email in `service_account.json` under `"client_email"`
+   - Share the sheet with "Editor" access
 
-**Keep this terminal open too!**
+### Step 3: Configure Settings
+1. Open `config/config.yaml`
+2. Add your:
+   - Shopify credentials
+   - Google Spreadsheet ID (from the sheet URL)
+   - Service account path
 
-### Step 3: Access from Your Phone
+### Step 4: Test It!
+```bash
+python src/ai_agent.py "show revenue"
+```
 
-1. Make sure your phone is connected to the **same WiFi network** as your computer
+If you see revenue data, **you're all set!** ✅
 
-2. Open a web browser on your phone (Chrome, Safari, etc.)
+---
 
-3. Type this URL in the address bar:
-   ```
-   http://192.168.1.242:8080
-   ```
+## 📚 Detailed Guides
 
-4. The app should load! You'll see:
-   - Analytics dashboard with TikTok, Instagram, and Google Sheets data
-   - Task management section
+Choose what you need:
 
-### Step 4: Test It Out!
+### 🆕 **New to this?**
+→ Read: `SETUP_AND_USAGE_GUIDE.md` (Complete step-by-step setup)
 
-- **View Analytics**: Tap on "Analytics" tab, switch between platforms
-- **Add a Task**: 
-  - Go to "Tasks" section
-  - Tap "+ Add Task"
-  - Fill in details and save
-- **Track Progress**: View all your tasks, filter by user, mark as complete
+### 📊 **Want to use it in Google Sheets?**
+→ Read: `GOOGLE_SHEETS_INTEGRATION.md` (Apps Script integration)
 
-## Troubleshooting:
+### 🎯 **Need quick commands?**
+→ Read: `AGENT_QUICK_START.md` (Command reference)
 
-### ❌ Can't connect from phone?
-- Make sure both devices are on the **same WiFi network**
-- Check Windows Firewall isn't blocking ports 8000 and 8080
-- Try temporarily disabling Windows Firewall to test
+### 📖 **Want full documentation?**
+→ Read: `AI_AGENT_GUIDE.md` (Complete guide)
 
-### ❌ Backend won't start?
-- Make sure port 8000 isn't already in use
-- Check you installed all dependencies: `pip install -r requirements.txt`
+---
 
-### ❌ Frontend shows "Loading..." forever?
-- Make sure the backend is running on port 8000
-- Check the browser console for errors (on phone: use remote debugging)
-- Try accessing the backend directly: `http://192.168.1.242:8000/api/health`
+## 🎯 Quick Commands
 
-### ❌ "Connection refused" error?
-- Make sure both servers are running
-- Try accessing from your computer first: `http://localhost:8080` to test frontend
-- Try accessing backend: `http://localhost:8000/api/health` to test backend
+```bash
+# Sync orders from Shopify to Google Sheets
+python src/ai_agent.py "sync orders"
 
-## Quick Test:
-Open these URLs in your phone's browser:
-- Frontend: `http://192.168.1.242:8080` ✅ Should show the app
-- Backend Health: `http://192.168.1.242:8000/api/health` ✅ Should show `{"status":"healthy"}`
+# Show revenue
+python src/ai_agent.py "show revenue"
 
-## That's it! 🎉
-Your Arcus app is now accessible on your phone at `http://192.168.1.242:8080`
+# Get orders summary
+python src/ai_agent.py "orders summary"
 
+# Profit breakdown
+python src/ai_agent.py "profit breakdown"
+```
+
+---
+
+## 🆘 Need Help?
+
+1. **Check troubleshooting section** in `SETUP_AND_USAGE_GUIDE.md`
+2. **Verify your setup:**
+   - `config/config.yaml` exists and is correct
+   - `credentials/service_account.json` exists
+   - Google Sheet is shared with service account
+
+---
+
+## ✅ You're Ready!
+
+Start using your AI Agent:
+```bash
+python src/ai_agent.py "sync orders"
+```
+
+🎉 **That's it!** Check your Google Sheet to see the updated data.

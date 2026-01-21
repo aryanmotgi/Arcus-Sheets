@@ -1,0 +1,49 @@
+═══════════════════════════════════════════════════════════════
+  🔧 FIX: "Failed to connect to API" Error
+═══════════════════════════════════════════════════════════════
+
+PROBLEM: Google Sheets can't reach localhost
+
+FIX IT IN 3 STEPS:
+
+
+STEP 1: Start Server & ngrok
+─────────────────────────────
+Double-click: start_server_and_ngrok.bat
+
+Look for ngrok URL like: https://abc123.ngrok.io
+COPY that URL (must be https://)
+
+
+STEP 2: Get ngrok URL
+──────────────────────
+If you don't see it:
+1. Open browser: http://127.0.0.1:4040
+2. Click "Status" tab
+3. Copy the "Forwarding" URL (the https:// one)
+
+
+STEP 3: Update Apps Script
+───────────────────────────
+1. Open Google Sheet
+2. Extensions → Apps Script
+3. Find line 18: const API_URL = 'http://localhost:8000...'
+4. Replace with: const API_URL = 'https://YOUR_NGROK_URL/api/agent/command';
+   (Use the URL you copied)
+5. Save (Ctrl+S)
+6. Refresh Google Sheet
+
+
+═══════════════════════════════════════════════════════════════
+  ✅ QUICK CHECKLIST
+═══════════════════════════════════════════════════════════════
+
+□ Server running? (terminal window open?)
+□ ngrok running? (another terminal window?)
+□ Got ngrok URL? (starts with https://)
+□ Updated API_URL in Apps Script? (line 18)
+□ Saved Apps Script? (Ctrl+S)
+□ Refreshed Google Sheet?
+
+
+═══════════════════════════════════════════════════════════════

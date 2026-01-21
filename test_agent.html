@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arcus Sheets AI Agent</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            padding: 40px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
+        .input-section {
+            margin-bottom: 30px;
+        }
+        
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        input[type="text"] {
+            flex: 1;
+            padding: 15px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        button {
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .quick-commands {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .quick-btn {
+            padding: 12px 20px;
+            background: #f5f5f5;
+            color: #333;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .quick-btn:hover {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .response-section {
+            margin-top: 30px;
+        }
+        
+        .response {
+            background: #f9f9f9;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .response.success {
+            border-left-color: #4caf50;
+        }
+        
+        .response.error {
+            border-left-color: #f44336;
+        }
+        
+        .response h3 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 18px;
+        }
+        
+        .response p {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+        
+        .response pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+            color: #667eea;
+        }
+        
+        .loading.active {
+            display: block;
+        }
+        
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🤖 Arcus Sheets AI Agent</h1>
+        <p class="subtitle">Natural language commands for Shopify & Google Sheets integration</p>
+        
+        <div class="input-section">
+            <div class="quick-commands">
+                <button class="quick-btn" onclick="setCommand('sync orders')">Sync Orders</button>
+                <button class="quick-btn" onclick="setCommand('show revenue')">Show Revenue</button>
+                <button class="quick-btn" onclick="setCommand('orders summary')">Orders Summary</button>
+                <button class="quick-btn" onclick="setCommand('product sales')">Product Sales</button>
+                <button class="quick-btn" onclick="setCommand('profit breakdown')">Profit Breakdown</button>
+                <button class="quick-btn" onclick="setCommand('backup PSL')">Backup PSL</button>
+                <button class="quick-btn" onclick="setCommand('restore PSL')">Restore PSL</button>
+                <button class="quick-btn" onclick="setCommand('customer insights')">Customer Insights</button>
+            </div>
+            
+            <div class="input-group">
+                <input type="text" id="commandInput" placeholder="Enter your command (e.g., 'sync orders from shopify')" 
+                       onkeypress="handleKeyPress(event)">
+                <button onclick="executeCommand()">Execute</button>
+            </div>
+        </div>
+        
+        <div class="loading" id="loading">
+            <div class="spinner"></div>
+            <p style="margin-top: 10px;">Processing your command...</p>
+        </div>
+        
+        <div class="response-section" id="responseSection" style="display: none;">
+            <div class="response" id="response">
+                <h3 id="responseTitle"></h3>
+                <p id="responseMessage"></p>
+                <pre id="responseData"></pre>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        const API_URL = 'http://localhost:8000/api/agent/command';
+        
+        function setCommand(command) {
+            document.getElementById('commandInput').value = command;
+            executeCommand();
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                executeCommand();
+            }
+        }
+        
+        async function executeCommand() {
+            const command = document.getElementById('commandInput').value.trim();
+            if (!command) {
+                alert('Please enter a command');
+                return;
+            }
+            
+            const loading = document.getElementById('loading');
+            const responseSection = document.getElementById('responseSection');
+            const response = document.getElementById('response');
+            const responseTitle = document.getElementById('responseTitle');
+            const responseMessage = document.getElementById('responseMessage');
+            const responseData = document.getElementById('responseData');
+            
+            // Show loading
+            loading.classList.add('active');
+            responseSection.style.display = 'none';
+            
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ command: command })
+                });
+                
+                const data = await response.json();
+                
+                // Hide loading
+                loading.classList.remove('active');
+                
+                // Show response
+                responseSection.style.display = 'block';
+                
+                // Update response
+                response.className = 'response ' + (data.success ? 'success' : 'error');
+                responseTitle.textContent = data.success ? '✓ Success' : '✗ Failed';
+                responseMessage.textContent = data.message;
+                
+                if (data.data) {
+                    responseData.textContent = JSON.stringify(data.data, null, 2);
+                    responseData.style.display = 'block';
+                } else {
+                    responseData.style.display = 'none';
+                }
+                
+            } catch (error) {
+                // Hide loading
+                loading.classList.remove('active');
+                
+                // Show error
+                responseSection.style.display = 'block';
+                response.className = 'response error';
+                responseTitle.textContent = '✗ Error';
+                responseMessage.textContent = `Failed to connect to API: ${error.message}`;
+                responseData.textContent = 'Make sure the server is running on http://localhost:8000';
+                responseData.style.display = 'block';
+            }
+        }
+        
+        // Load on page load
+        window.addEventListener('load', () => {
+            console.log('AI Agent interface loaded');
+        });
+    </script>
+</body>
+</html>

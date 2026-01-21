@@ -1,0 +1,64 @@
+═══════════════════════════════════════════════════════
+  GOOGLE SHEETS AI AGENT - QUICK SETUP (3 STEPS)
+═══════════════════════════════════════════════════════
+
+STEP 1: START SERVER & NGROK
+─────────────────────────────
+Double-click: start_server_and_ngrok.bat
+
+Wait for:
+  ✓ Server running on http://localhost:8000
+  ✓ ngrok showing URL like: https://abc123.ngrok.io
+
+COPY the ngrok HTTPS URL (the https:// one)
+
+
+STEP 2: UPDATE GOOGLE APPS SCRIPT
+─────────────────────────────────
+1. Open your Google Sheet
+2. Click: Extensions → Apps Script
+3. Find line 18: const API_URL = 'http://localhost:8000/api/agent/command';
+4. Replace with: const API_URL = 'https://YOUR_NGROK_URL/api/agent/command';
+   (Replace YOUR_NGROK_URL with the URL you copied)
+5. Save (Ctrl+S)
+
+
+STEP 3: UPDATE DIALOG HTML (ONE TIME ONLY)
+──────────────────────────────────────────
+1. In Apps Script, click: + (Add file) → HTML → Name it "CommandDialog"
+2. Open FIXED_COMMAND_DIALOG.html in your editor
+3. Copy ALL the content
+4. Paste into the CommandDialog.html file in Apps Script
+5. Save (Ctrl+S)
+
+
+STEP 4: USE IT!
+───────────────
+1. Refresh your Google Sheet
+2. You'll see menu: "🤖 AI Agent"
+3. Click: "AI Agent → Open Command Dialog"
+4. Type commands like:
+   • "fix net profit function"
+   • "show change log"
+   • "swap shipping cost with PSL"
+
+
+═══════════════════════════════════════════════════════
+  TROUBLESHOOTING
+═══════════════════════════════════════════════════════
+
+"Failed to connect to API"
+  → Make sure server is running
+  → Check ngrok URL is correct
+  → Make sure URL is HTTPS (not HTTP)
+
+"Authorization required"
+  → Click "Review Permissions"
+  → Click "Advanced" → "Go to [Project] (unsafe)"
+  → Click "Allow"
+
+Menu doesn't appear
+  → Refresh Google Sheet
+  → Check Apps Script saved successfully
+
+═══════════════════════════════════════════════════════

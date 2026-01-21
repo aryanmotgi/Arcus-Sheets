@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
+    .input-wrapper {
+      position: relative;
+      margin-bottom: 15px;
+    }
+    input[type="text"] {
+      width: 100%;
+      padding: 14px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 15px;
+      transition: all 0.3s;
+      background: white;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    input[type="text"]:disabled {
+      background: #f5f5f5;
+      cursor: not-allowed;
+    }
+    .quick-commands {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .section-title {
+      font-weight: 600;
+      color: #333;
+      margin: 15px 0 8px 0;
+      font-size: 13px;
+    }
+    .quick-btn {
+      padding: 10px;
+      background: #f5f5f5;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+      transform: translateY(-2px);
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 15px;
+      transition: all 0.2s;
+    }
+    button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+    .response {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+      animation: slideIn 0.3s ease;
+    }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateY(-10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .response.success {
+      background: #d4edda;
+      border: 2px solid #4caf50;
+      color: #155724;
+      display: block;
+    }
+    .response.error {
+      background: #f8d7da;
+      border: 2px solid #f44336;
+      color: #721c24;
+      display: block;
+    }
+    .response h3 {
+      margin-bottom: 8px;
+      font-size: 16px;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #667eea;
+    }
+    .loading.active { display: block; }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .help-text {
+      font-size: 11px;
+      color: #666;
+      margin-top: 5px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 AI Agent - Sheet Manager</h1>
+    
+    <div class="input-wrapper">
+      <input 
+        type="text" 
+        id="commandInput" 
+        placeholder="Type your command here... (e.g., 'move shipping cost to right', 'swap PSL with shipping cost')"
+        onkeypress="handleKeyPress(event)"
+        autocomplete="off"
+        autofocus
+      >
+      <div class="help-text">💡 Try: "move shipping cost to right", "swap PSL with shipping cost", "format orders sheet"</div>
+    </div>
+    
+    <div class="section-title">📊 Data & Analytics</div>
+    <div class="quick-commands">
+      <div class="quick-btn" onclick="setCommand('sync orders')">Sync Orders</div>
+      <div class="quick-btn" onclick="setCommand('show revenue')">Revenue</div>
+      <div class="quick-btn" onclick="setCommand('orders summary')">Summary</div>
+      <div class="quick-btn" onclick="setCommand('profit breakdown')">Profit</div>
+      <div class="quick-btn" onclick="setCommand('top products')">Top Products</div>
+      <div class="quick-btn" onclick="setCommand('top customers')">Top Customers</div>
+    </div>
+    
+    <div class="section-title">🎨 Sheet Management</div>
+    <div class="quick-commands">
+      <div class="quick-btn" onclick="setCommand('format orders sheet')">Format Sheet</div>
+      <div class="quick-btn" onclick="setCommand('center all text')">Center Text</div>
+      <div class="quick-btn" onclick="setCommand('add borders')">Add Borders</div>
+      <div class="quick-btn" onclick="setCommand('move shipping cost to right')">Move Column</div>
+      <div class="quick-btn" onclick="setCommand('swap shipping cost with PSL')">Swap Columns</div>
+      <div class="quick-btn" onclick="setCommand('fix net profit function')">Fix Net Profit</div>
+    </div>
+    
+    <div class="section-title">📋 Change History</div>
+    <div class="quick-commands">
+      <div class="quick-btn" onclick="setCommand('show change log')">View Changes</div>
+      <div class="quick-btn" onclick="setCommand('revert last change')">Revert Last</div>
+      <div class="quick-btn" onclick="setCommand('what did I change')">Recent Changes</div>
+    </div>
+    
+    <button id="executeBtn" onclick="executeCommand()">Execute Command</button>
+    
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Processing your command...</div>
+    </div>
+    
+    <div class="response" id="response">
+      <h3 id="responseTitle"></h3>
+      <div id="responseMessage"></div>
+    </div>
+  </div>
+  
+  <script>
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        executeCommand();
+      }
+    }
+    
+    function setCommand(cmd) {
+      var input = document.getElementById('commandInput');
+      input.value = cmd;
+      input.focus();
+      executeCommand();
+    }
+    
+    function executeCommand() {
+      var cmd = document.getElementById('commandInput');
+      var command = cmd.value.trim();
+      
+      if (!command) {
+        alert('Please enter a command');
+        cmd.focus();
+        return;
+      }
+      
+      var loading = document.getElementById('loading');
+      var response = document.getElementById('response');
+      var btn = document.getElementById('executeBtn');
+      var input = document.getElementById('commandInput');
+      
+      // Disable input and button
+      input.disabled = true;
+      loading.classList.add('active');
+      response.style.display = 'none';
+      btn.disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          input.disabled = false;
+          loading.classList.remove('active');
+          btn.disabled = false;
+          
+          if (result.success && result.data && result.data.success) {
+            response.className = 'response success';
+            document.getElementById('responseTitle').textContent = '✓ Success';
+            var message = result.data.message || 'Command executed successfully!';
+            
+            // If there's change log data, format it nicely
+            if (result.data.data && result.data.data.changes) {
+              var changes = result.data.data.changes;
+              message += '\n\n📋 Recent Changes:\n';
+              changes.slice(0, 5).forEach(function(change) {
+                var time = new Date(change.time).toLocaleString();
+                message += '\n• ' + change.description + ' (' + time + ')';
+              });
+            }
+            
+            document.getElementById('responseMessage').textContent = message;
+          } else {
+            response.className = 'response error';
+            document.getElementById('responseTitle').textContent = '✗ Error';
+            var errorMsg = result.success ? (result.data ? result.data.message : 'Command failed') : (result.message || 'Unknown error');
+            document.getElementById('responseMessage').textContent = errorMsg;
+          }
+          response.style.display = 'block';
+          input.focus();
+        })
+        .withFailureHandler(function(error) {
+          input.disabled = false;
+          loading.classList.remove('active');
+          btn.disabled = false;
+          response.className = 'response error';
+          document.getElementById('responseTitle').textContent = '✗ Error';
+          document.getElementById('responseMessage').textContent = 'Failed to execute: ' + (error.message || error.toString());
+          response.style.display = 'block';
+          input.focus();
+        })
+        .executeCommand(command);
+    }
+    
+    // Focus input on load
+    window.onload = function() {
+      document.getElementById('commandInput').focus();
+    };
+  </script>
+</body>
+</html>

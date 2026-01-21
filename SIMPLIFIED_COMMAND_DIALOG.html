@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 25px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    h1 { color: #333; font-size: 24px; margin-bottom: 20px; }
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    .quick-commands {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .section-title {
+      font-weight: 600;
+      color: #333;
+      margin: 15px 0 8px 0;
+      font-size: 13px;
+    }
+    .quick-btn {
+      padding: 10px;
+      background: #f5f5f5;
+      border: 2px solid #e0e0e0;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+    .quick-btn:hover {
+      background: #667eea;
+      color: white;
+      border-color: #667eea;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 15px;
+    }
+    button:hover { transform: translateY(-2px); }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .response {
+      margin-top: 15px;
+      padding: 15px;
+      border-radius: 8px;
+      display: none;
+    }
+    .response.success {
+      background: #d4edda;
+      border: 2px solid #4caf50;
+      color: #155724;
+      display: block;
+    }
+    .response.error {
+      background: #f8d7da;
+      border: 2px solid #f44336;
+      color: #721c24;
+      display: block;
+    }
+    .loading {
+      display: none;
+      text-align: center;
+      padding: 20px;
+      color: #667eea;
+    }
+    .loading.active { display: block; }
+    .spinner {
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #667eea;
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🤖 AI Agent Command Interface</h1>
+    
+    <input 
+      type="text" 
+      id="commandInput" 
+      placeholder="Type your command here (e.g., move shipping cost to right, swap PSL with shipping cost)..."
+      onkeypress="if(event.key==='Enter') executeCommand()"
+      style="width: 100%; padding: 12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px; margin-bottom: 15px;"
+      autocomplete="off"
+    >
+    
+    <div class="section-title">📊 Data & Analytics</div>
+    <div class="quick-commands">
+      <div class="quick-btn" onclick="setCommand('sync orders')">Sync Orders</div>
+      <div class="quick-btn" onclick="setCommand('show revenue')">Revenue</div>
+      <div class="quick-btn" onclick="setCommand('orders summary')">Summary</div>
+      <div class="quick-btn" onclick="setCommand('profit breakdown')">Profit</div>
+      <div class="quick-btn" onclick="setCommand('top products')">Top Products</div>
+      <div class="quick-btn" onclick="setCommand('top customers')">Top Customers</div>
+    </div>
+    
+    <div class="section-title">🎨 Sheet Management</div>
+    <div class="quick-commands">
+      <div class="quick-btn" onclick="setCommand('format orders sheet')">Format Sheet</div>
+      <div class="quick-btn" onclick="setCommand('center all text')">Center Text</div>
+      <div class="quick-btn" onclick="setCommand('add borders')">Add Borders</div>
+      <div class="quick-btn" onclick="setCommand('move shipping cost to right')">Move Column</div>
+      <div class="quick-btn" onclick="setCommand('swap shipping cost with PSL')">Swap Columns</div>
+      <div class="quick-btn" onclick="setCommand('make column A wider')">Widen Column</div>
+    </div>
+    
+    <button id="executeBtn" onclick="executeCommand()">Execute Command</button>
+    
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div>Processing...</div>
+    </div>
+    
+    <div class="response" id="response">
+      <h3 id="responseTitle"></h3>
+      <div id="responseMessage"></div>
+    </div>
+  </div>
+  
+  <script>
+    function setCommand(cmd) {
+      document.getElementById('commandInput').value = cmd;
+      executeCommand();
+    }
+    
+    function executeCommand() {
+      var cmd = document.getElementById('commandInput').value.trim();
+      if (!cmd) { alert('Please enter a command'); return; }
+      
+      var loading = document.getElementById('loading');
+      var response = document.getElementById('response');
+      var btn = document.getElementById('executeBtn');
+      
+      loading.classList.add('active');
+      response.style.display = 'none';
+      btn.disabled = true;
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          loading.classList.remove('active');
+          btn.disabled = false;
+          
+          if (result.success && result.data.success) {
+            response.className = 'response success';
+            document.getElementById('responseTitle').textContent = '✓ Success';
+            document.getElementById('responseMessage').textContent = result.data.message || 'Command executed!';
+          } else {
+            response.className = 'response error';
+            document.getElementById('responseTitle').textContent = '✗ Error';
+            document.getElementById('responseMessage').textContent = result.success ? (result.data.message || 'Failed') : result.message;
+          }
+          response.style.display = 'block';
+        })
+        .withFailureHandler(function(error) {
+          loading.classList.remove('active');
+          btn.disabled = false;
+          response.className = 'response error';
+          document.getElementById('responseTitle').textContent = '✗ Error';
+          document.getElementById('responseMessage').textContent = 'Error: ' + error.message;
+          response.style.display = 'block';
+        })
+        .executeCommand(cmd);
+    }
+  </script>
+</body>
+</html>
