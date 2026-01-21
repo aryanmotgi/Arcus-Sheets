@@ -55,4 +55,10 @@ config/psl_backup.json
 *.exe
 credentials/*.exe
 
+# Files with token references (keep locally, don't track in git)
+INSTALL_GIT_AND_PUSH.md
+PUSH.bat
+PUSH_TO_GITHUB_NOW.bat
+SIMPLE_PUSH_INSTRUCTIONS.txt
+
 
