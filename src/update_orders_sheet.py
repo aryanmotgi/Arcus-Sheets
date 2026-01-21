@@ -897,6 +897,18 @@ def update_orders_sheet():
         
         logger.info("Orders sheet updated successfully!")
         
+        # Create Setup and Costs sheet
+        logger.info("=" * 60)
+        logger.info("Creating Setup and Costs sheet...")
+        logger.info("=" * 60)
+        
+        try:
+            from create_setup_costs_sheet import create_setup_costs_sheet
+            create_setup_costs_sheet(manager)
+        except Exception as e:
+            logger.warning(f"Could not create Setup and Costs sheet: {e}")
+            logger.info("Continuing without Setup and Costs sheet...")
+        
     except Exception as e:
         logger.error(f"Error during update: {str(e)}", exc_info=True)
         raise
