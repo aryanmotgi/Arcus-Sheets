@@ -20,29 +20,50 @@ class SheetsManager:
         'https://www.googleapis.com/auth/drive'
     ]
     
-    def __init__(self, spreadsheet_id: str, service_account_path: str):
+    def __init__(self, spreadsheet_id: str, service_account_path: str = None, google_credentials_json: str = None):
         """
         Initialize Google Sheets manager
         
         Args:
             spreadsheet_id: Google Sheets spreadsheet ID
-            service_account_path: Path to service account JSON file
+            service_account_path: Path to service account JSON file (optional if google_credentials_json provided)
+            google_credentials_json: Service account JSON as string (from environment variable)
         """
+        import json
+        import os
+        
         self.logger = logging.getLogger(__name__)
         self.spreadsheet_id = spreadsheet_id
-        service_account_path = Path(service_account_path)
         
-        if not service_account_path.exists():
-            raise FileNotFoundError(
-                f"Service account file not found: {service_account_path}\n"
-                f"Please download your service account JSON from Google Cloud Console"
+        # Try to load credentials from environment variable first
+        if google_credentials_json:
+            try:
+                creds_dict = json.loads(google_credentials_json)
+                creds = Credentials.from_service_account_info(
+                    creds_dict,
+                    scopes=self.SCOPES
+                )
+                self.logger.info("Using Google credentials from environment variable")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid GOOGLE_CREDENTIALS JSON: {e}")
+        # Fall back to file path
+        elif service_account_path:
+            service_account_path = Path(service_account_path)
+            if not service_account_path.exists():
+                raise FileNotFoundError(
+                    f"Service account file not found: {service_account_path}\n"
+                    f"Please download your service account JSON from Google Cloud Console"
+                )
+            creds = Credentials.from_service_account_file(
+                str(service_account_path),
+                scopes=self.SCOPES
+            )
+            self.logger.info(f"Using Google credentials from file: {service_account_path}")
+        else:
+            raise ValueError(
+                "Either service_account_path or google_credentials_json (environment variable) must be provided"
             )
         
-        # Authenticate using modern google-auth library
-        creds = Credentials.from_service_account_file(
-            str(service_account_path),
-            scopes=self.SCOPES
-        )
         self.client = gspread.authorize(creds)
         self.spreadsheet = self.client.open_by_key(spreadsheet_id)
         self.logger.info(f"Connected to spreadsheet: {self.spreadsheet.title}")

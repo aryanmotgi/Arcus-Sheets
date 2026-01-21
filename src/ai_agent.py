@@ -26,7 +26,20 @@ class SheetsAIAgent:
     
     def __init__(self, config_path: str = 'config/config.yaml'):
         """Initialize the AI agent with Shopify and Sheets connections"""
+        import os
+        
+        # Load config from environment variables or file
         self.config = self._load_config(config_path)
+        
+        # Override with environment variables if they exist
+        if os.getenv('SHOPIFY_STORE_URL'):
+            self.config.setdefault('shopify', {})['store_url'] = os.getenv('SHOPIFY_STORE_URL')
+        if os.getenv('SHOPIFY_CLIENT_ID'):
+            self.config.setdefault('shopify', {})['client_id'] = os.getenv('SHOPIFY_CLIENT_ID')
+        if os.getenv('SHOPIFY_CLIENT_SECRET'):
+            self.config.setdefault('shopify', {})['client_secret'] = os.getenv('SHOPIFY_CLIENT_SECRET')
+        if os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID'):
+            self.config.setdefault('google_sheets', {})['spreadsheet_id'] = os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID')
         
         # Initialize Shopify client
         shopify_config = self.config.get('shopify', {})
@@ -38,9 +51,16 @@ class SheetsAIAgent:
         
         # Initialize Sheets manager
         sheets_config = self.config.get('google_sheets', {})
+        spreadsheet_id = sheets_config.get('spreadsheet_id')
+        
+        # Get service account path or use environment variable
+        service_account_path = sheets_config.get('service_account_path')
+        google_credentials = os.getenv('GOOGLE_CREDENTIALS')
+        
         self.sheets_manager = SheetsManager(
-            spreadsheet_id=sheets_config.get('spreadsheet_id'),
-            service_account_path=sheets_config.get('service_account_path')
+            spreadsheet_id=spreadsheet_id,
+            service_account_path=service_account_path,
+            google_credentials_json=google_credentials
         )
         
         # Initialize Sheet Manager Agent for sheet modifications
@@ -62,16 +82,17 @@ class SheetsAIAgent:
         logger.info("AI Agent initialized and ready")
     
     def _load_config(self, config_path: str) -> Dict:
-        """Load configuration from YAML file"""
+        """Load configuration from YAML file, return empty dict if file doesn't exist"""
         config_file = Path(config_path)
         if not config_file.exists():
-            raise FileNotFoundError(f"Config file not found: {config_path}")
+            logger.warning(f"Config file not found: {config_path}, using environment variables instead")
+            return {}
         
         with open(config_file, 'r') as f:
             config = yaml.safe_load(f)
         
         if not config:
-            raise ValueError("Config file is empty")
+            return {}
         
         return config
     
