@@ -1243,7 +1243,7 @@ def add_summary_section(sheet, orders_output, headers: list, start_col: int, num
         ['Total Product Costs', f'=SUM({unit_cost_col}2:{unit_cost_col}{last_row})'],  # Column F - Unit Cost
         ['TOTAL COSTS', 809.32],  # Hardcoded value
         ['NET PROFIT', f'={value_col}2-{value_col}4'],  # Row 2 (Total Revenue) - Row 4 (TOTAL COSTS 809.32)
-        ['Profit Per Shirt (Overall)', f'={value_col}2-{value_col}3'],  # Row 2 (Total Revenue) - Row 3 (Total Product Costs)
+        ['Profit Per Shirt (Overall)', f'=SUM(I2:I{last_row})'],  # Sum of all values in Profit column (column I)
         ['Total Units Sold', f'=SUM({quantity_col}2:{quantity_col}{last_row})'],  # Column D - Quantity
         ['Shopify Payout', shopify_payout_value],  # Calculated from Shopify order data (excluding excluded statuses)
         ['', ''],  # Empty row

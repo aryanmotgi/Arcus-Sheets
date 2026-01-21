@@ -19,6 +19,8 @@ from update_orders_sheet import update_orders_sheet
 from sheet_manager_agent import SheetManagerAgent
 from finance_agent import FinanceAgent
 from chart_agent import ChartAgent
+from sync_agent import SyncAgent
+from costs_agent import CostsAgent
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +71,8 @@ class SheetsAIAgent:
         self.sheet_manager_agent = SheetManagerAgent(self.sheets_manager)
         self.finance_agent = FinanceAgent(self.sheets_manager)
         self.chart_agent = ChartAgent(self.sheets_manager)
+        self.sync_agent = SyncAgent(self.sheets_manager, self.shopify_client, self.config)
+        self.costs_agent = CostsAgent(self.sheets_manager)
         
         # Available commands the agent can execute
         self.available_commands = {
@@ -123,14 +127,29 @@ class SheetsAIAgent:
         }
         
         try:
-            # Sync/Sync orders - More flexible matching
+            # Sync Agent - handles syncing orders from Shopify
             if any(word in command_lower for word in ['sync', 'update', 'refresh', 'pull', 'fetch', 'get orders']):
                 if any(word in command_lower for word in ['order', 'sheet', 'shopify', 'data', 'everything', 'all']):
-                    result = self._sync_orders()
-                    response['success'] = result.get('status') == 'success'
+                    result = self.sync_agent.process_command(command)
+                    response['success'] = result.get('status') == 'success' or result.get('success', False)
                     response['message'] = result.get('message', 'Orders synced!')
                     response['data'] = result
                     return response
+            
+            # Backup/Restore PSL - handled by Sync Agent
+            if 'backup' in command_lower and 'psl' in command_lower:
+                result = self.sync_agent.process_command(command)
+                response['success'] = result.get('status') == 'success' or result.get('success', False)
+                response['message'] = result.get('message', 'PSL backup completed')
+                response['data'] = result
+                return response
+            
+            if 'restore' in command_lower and 'psl' in command_lower:
+                result = self.sync_agent.process_command(command)
+                response['success'] = result.get('status') == 'success' or result.get('success', False)
+                response['message'] = result.get('message', 'PSL restore completed')
+                response['data'] = result
+                return response
             
             # Revenue queries
             if any(word in command_lower for word in ['revenue', 'sales', 'total', 'money']):
@@ -156,28 +175,29 @@ class SheetsAIAgent:
                 response['data'] = result
                 return response
             
-            # Profit queries
-            if any(word in command_lower for word in ['profit', 'margin', 'cost']):
-                result = self._get_profit_breakdown()
-                response['success'] = True
-                response['message'] = "Profit breakdown retrieved"
+            # Costs Agent - handles cost-related operations
+            if any(word in command_lower for word in ['cost', 'total cost', 'cost per shirt', 'profit per shirt', 'fix profit per shirt', '809']):
+                result = self.costs_agent.process_command(command)
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Cost command executed')
                 response['data'] = result
                 return response
             
-            # PSL backup/restore
-            if 'backup' in command_lower and 'psl' in command_lower:
-                result = self._backup_psl()
-                response['success'] = True
-                response['message'] = "PSL values backed up successfully"
-                response['data'] = result
-                return response
-            
-            if 'restore' in command_lower and 'psl' in command_lower:
-                result = self._restore_psl()
-                response['success'] = True
-                response['message'] = "PSL values restored successfully"
-                response['data'] = result
-                return response
+            # Profit queries (if not handled by costs agent)
+            if any(word in command_lower for word in ['profit', 'margin']):
+                # Check if it's profit per shirt (handled by costs agent)
+                if 'profit per shirt' in command_lower or 'profitpershirt' in command_lower:
+                    result = self.costs_agent.process_command(command)
+                    response['success'] = result.get('success', False)
+                    response['message'] = result.get('message', 'Profit per shirt command executed')
+                    response['data'] = result
+                    return response
+                else:
+                    result = self._get_profit_breakdown()
+                    response['success'] = True
+                    response['message'] = "Profit breakdown retrieved"
+                    response['data'] = result
+                    return response
             
             # Top products
             if any(word in command_lower for word in ['top product', 'best selling', 'best seller']):
@@ -249,23 +269,25 @@ class SheetsAIAgent:
             else:
                 # Default: more helpful error message
                 response['message'] = f"🤖 I can help you with:\n\n" \
-                                    f"📊 **Data & Sync:**\n" \
+                                    f"🔄 **Sync Agent** - Orders & Data:\n" \
                                     f"  • 'sync orders' - Update all orders from Shopify\n" \
-                                    f"  • 'show revenue' - Get sales totals\n" \
-                                    f"  • 'orders summary' - Overview of all orders\n" \
-                                    f"  • 'product sales' - Product breakdown\n" \
-                                    f"  • 'profit breakdown' - Profit analysis\n" \
-                                    f"  • 'top products' - Best sellers\n" \
-                                    f"  • 'top customers' - Best customers\n\n" \
-                                    f"📝 **Sheet Management:**\n" \
+                                    f"  • 'backup PSL' - Save PSL values\n" \
+                                    f"  • 'restore PSL' - Restore PSL values\n\n" \
+                                    f"💵 **Costs Agent** - Cost Operations:\n" \
+                                    f"  • 'update total costs to 1000' - Update TOTAL COSTS\n" \
+                                    f"  • 'what's the total cost?' - Get total costs\n" \
+                                    f"  • 'fix profit per shirt formula' - Fix Profit Per Shirt\n\n" \
+                                    f"📝 **Sheets Agent** - Format & Modify:\n" \
                                     f"  • 'format orders sheet' - Style the sheet\n" \
                                     f"  • 'fix net profit function' - Update formulas\n" \
                                     f"  • 'swap shipping cost with PSL' - Move columns\n" \
                                     f"  • 'add borders' - Format cells\n\n" \
-                                    f"💾 **Backup & History:**\n" \
-                                    f"  • 'backup PSL' - Save PSL values\n" \
-                                    f"  • 'show change log' - View changes\n" \
-                                    f"  • 'revert last change' - Undo\n\n" \
+                                    f"📊 **Data & Analytics:**\n" \
+                                    f"  • 'show revenue' - Get sales totals\n" \
+                                    f"  • 'orders summary' - Overview of all orders\n" \
+                                    f"  • 'profit breakdown' - Profit analysis\n" \
+                                    f"  • 'top products' - Best sellers\n" \
+                                    f"  • 'top customers' - Best customers\n\n" \
                                     f"❓ I didn't understand: '{command}'\n" \
                                     f"Try one of the commands above!"
             
