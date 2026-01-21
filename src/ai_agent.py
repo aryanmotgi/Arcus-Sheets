@@ -17,6 +17,8 @@ from sheets_manager import SheetsManager
 from data_processor import DataProcessor
 from update_orders_sheet import update_orders_sheet
 from sheet_manager_agent import SheetManagerAgent
+from finance_agent import FinanceAgent
+from chart_agent import ChartAgent
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +65,10 @@ class SheetsAIAgent:
             google_credentials_json=google_credentials
         )
         
-        # Initialize Sheet Manager Agent for sheet modifications
+        # Initialize specialized agents
         self.sheet_manager_agent = SheetManagerAgent(self.sheets_manager)
+        self.finance_agent = FinanceAgent(self.sheets_manager)
+        self.chart_agent = ChartAgent(self.sheets_manager)
         
         # Available commands the agent can execute
         self.available_commands = {
@@ -215,8 +219,18 @@ class SheetsAIAgent:
                 response['data'] = result
                 return response
             
-            # Sheet management commands (format, update, modify)
-            if any(word in command_lower for word in ['format', 'style', 'color', 'border', 'align', 'wider', 'update sheet', 'modify sheet', 'change sheet']):
+            # Chart Agent - handles chart creation
+            if any(word in command_lower for word in ['chart', 'graph', 'visualize', 'plot', 'create chart', 'make chart']):
+                result = self.chart_agent.process_command(command)
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Chart command executed')
+                response['data'] = result.get('data')
+                return response
+            
+            # Sheet management commands (format, update, modify, organize)
+            if any(word in command_lower for word in ['format', 'style', 'color', 'border', 'align', 'wider', 
+                                                      'update sheet', 'modify sheet', 'change sheet', 'organize',
+                                                      'arrange', 'reorder', 'move', 'swap', 'sort']):
                 result = self.sheet_manager_agent.process_sheet_command(command)
                 response['success'] = result.get('success', False)
                 response['message'] = result.get('message', 'Sheet command executed')
