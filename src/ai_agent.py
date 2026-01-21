@@ -291,14 +291,30 @@ class SheetsAIAgent:
                 orders_before = 0
                 logger.info("📊 Starting fresh - no existing orders found")
             
-            # Sync orders - this will fetch ALL orders from Shopify
-            logger.info("🔄 Syncing orders from Shopify...")
+            # STEP 1: Backup PSL values BEFORE sync
+            logger.info("💾 Step 1: Backing up PSL values before sync...")
+            backup_result = self._backup_psl()
+            if backup_result.get('status') == 'success':
+                logger.info(f"✅ PSL backup successful: {backup_result.get('message', '')}")
+            else:
+                logger.warning(f"⚠️ PSL backup warning: {backup_result.get('message', '')}")
+            
+            # STEP 2: Sync orders - this will fetch ALL orders from Shopify
+            logger.info("🔄 Step 2: Syncing orders from Shopify...")
             logger.info("⏳ This may take a moment - fetching fresh data from Shopify...")
             
             # Call update_orders_sheet which fetches directly from Shopify API
             update_orders_sheet()
             
-            logger.info("✅ Sync completed! Verifying...")
+            logger.info("✅ Sync completed! Restoring PSL values...")
+            
+            # STEP 3: Automatically restore PSL values AFTER sync
+            logger.info("💾 Step 3: Automatically restoring PSL values after sync...")
+            restore_result = self._restore_psl()
+            if restore_result.get('status') == 'success':
+                logger.info(f"✅ PSL restore successful: {restore_result.get('message', '')}")
+            else:
+                logger.warning(f"⚠️ PSL restore warning: {restore_result.get('message', '')}")
             
             # Get new order count
             try:
@@ -313,6 +329,7 @@ class SheetsAIAgent:
             orders_synced = orders_after
             new_orders = orders_after - orders_before
             
+            # Build success message
             message = f'✅ **Sync Complete!**\n\n'
             message += f'📊 **Summary:**\n'
             message += f'  • Total orders in sheet: {orders_synced}\n'
@@ -320,6 +337,16 @@ class SheetsAIAgent:
                 message += f'  • New orders added: {new_orders}\n'
             elif orders_before > 0:
                 message += f'  • Sheet refreshed with latest data\n'
+            
+            # Add PSL restore status
+            if restore_result.get('status') == 'success':
+                message += f'\n💾 **PSL Values:**\n'
+                message += f'  • ✅ Automatically restored after sync\n'
+            elif backup_result.get('status') == 'success':
+                message += f'\n💾 **PSL Values:**\n'
+                message += f'  • ⚠️ Backup saved, but restore had issues\n'
+                message += f'  • 💡 Try "restore PSL" manually\n'
+            
             message += f'\n🔄 All orders synced from Shopify to Google Sheets'
             
             return {

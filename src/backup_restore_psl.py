@@ -17,18 +17,30 @@ import yaml
 from sheets_manager import SheetsManager
 
 def load_config():
-    """Load configuration from config.yaml"""
+    """Load configuration from environment variables or config.yaml"""
+    import os
+    
+    # Try environment variables first
+    config = {}
+    
+    if os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID'):
+        config['google_sheets'] = {
+            'spreadsheet_id': os.getenv('GOOGLE_SHEETS_SPREADSHEET_ID'),
+            'service_account_path': os.getenv('GOOGLE_CREDENTIALS')  # Will be handled differently
+        }
+    
+    if config.get('google_sheets'):
+        return config
+    
+    # Fall back to config.yaml
     config_path = Path('config/config.yaml')
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    if config_path.exists():
+        with open(config_path, 'r') as f:
+            file_config = yaml.safe_load(f)
+            if file_config:
+                return file_config
     
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    
-    if not config:
-        raise ValueError("Config file is empty")
-    
-    return config
+    raise ValueError("Configuration not found! Set GOOGLE_SHEETS_SPREADSHEET_ID and GOOGLE_CREDENTIALS")
 
 logging.basicConfig(
     level=logging.INFO,
