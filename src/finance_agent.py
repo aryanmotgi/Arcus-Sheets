@@ -57,133 +57,86 @@ class FinanceAgent:
     
     def _fix_net_profit_formula(self, command: str) -> Dict[str, Any]:
         """
-        Fix NET PROFIT formula to: Total Revenue - Total Costs (809.32)
-        Formula location: Column P, Row 5
-        Formula: =P2-P4 (Total Revenue - TOTAL COSTS)
+        Update NET PROFIT in METRICS table
+        Note: NET PROFIT is now calculated automatically via metrics_calculator
+        This method recalculates and updates METRICS
         """
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
+            from metrics_calculator import calculate_and_update_metrics
             
-            # Find summary section (starts at column O)
-            summary_start_col = 15  # Column O
-            value_col = chr(64 + summary_start_col + 1)  # Column P (value column)
+            # Recalculate all metrics
+            metrics = calculate_and_update_metrics(self.sheets_manager)
             
-            # NET PROFIT is in row 5
-            # Row 2 = Total Revenue (P2)
-            # Row 4 = TOTAL COSTS (809.32) (P4)
-            # NET PROFIT should be: =P2-P4 (Total Revenue - TOTAL COSTS)
-            
-            net_profit_row = 5
-            net_profit_cell = f'{value_col}{net_profit_row}'
-            
-            # Correct formula: Total Revenue (P2) - TOTAL COSTS (P4)
-            correct_formula = f'={value_col}2-{value_col}4'
-            
-            # Get current formula
-            try:
-                current_formula = sheet.acell(net_profit_cell, value_render_option='FORMULA').value or ''
-            except:
-                current_formula = ''
-            
-            # Update to correct formula
-            sheet.update(net_profit_cell, correct_formula, value_input_option='USER_ENTERED')
-            
-            self.logger.info(f"Fixed NET PROFIT formula in {net_profit_cell} to: {correct_formula}")
+            net_profit = metrics.get("net_profit_after_setup", 0.0)
+            setup_costs = metrics.get("setup_costs", 809.32)
             
             return {
                 'success': True,
-                'message': f'✅ **NET PROFIT Formula Fixed!**\n\n'
-                          f'📊 Formula: `{correct_formula}`\n'
-                          f'📍 Location: {net_profit_cell}\n'
-                          f'💡 Formula: Total Revenue (P2) - TOTAL COSTS (P4)\n'
-                          f'💵 Total Costs: $809.32\n\n'
-                          f'✅ NET PROFIT = Total Revenue - $809.32',
+                'message': f'✅ **NET PROFIT Updated in METRICS!**\n\n'
+                          f'📊 Net Profit After Setup: ${net_profit:,.2f}\n'
+                          f'💵 Setup Costs: ${setup_costs:,.2f}\n'
+                          f'💡 Formula: Contribution Profit - Setup Costs\n\n'
+                          f'✅ All metrics recalculated and updated',
                 'data': {
-                    'cell': net_profit_cell,
-                    'formula': correct_formula,
-                    'explanation': 'Total Revenue (P2) - TOTAL COSTS (P4)'
+                    'net_profit_after_setup': net_profit,
+                    'setup_costs': setup_costs,
+                    'all_metrics': metrics
                 }
             }
             
         except Exception as e:
-            self.logger.error(f"Error fixing net profit formula: {e}", exc_info=True)
+            self.logger.error(f"Error updating net profit: {e}", exc_info=True)
             return {'success': False, 'message': f"Error: {str(e)}"}
     
     def _get_revenue(self, command: str) -> Dict[str, Any]:
-        """Get total revenue from summary"""
+        """Get total revenue from METRICS table"""
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
-            
-            # Read revenue from summary (column P, row 2)
-            summary_start_col = 15  # Column O
-            value_col = chr(64 + summary_start_col + 1)  # Column P
-            
-            try:
-                revenue_cell = f'{value_col}2'
-                revenue_value = sheet.acell(revenue_cell).value or '$0.00'
-            except:
-                revenue_value = 'Unable to read'
+            revenue = self.sheets_manager.get_metric("total_revenue")
+            if revenue is None:
+                revenue = 0.0
             
             return {
                 'success': True,
-                'message': f'💰 **Total Revenue:** {revenue_value}',
-                'data': {'revenue': revenue_value}
+                'message': f'💰 **Total Revenue:** ${revenue:,.2f}',
+                'data': {'revenue': revenue}
             }
         except Exception as e:
             return {'success': False, 'message': f"Error: {str(e)}"}
     
     def _get_costs(self, command: str) -> Dict[str, Any]:
-        """Get total costs"""
+        """Get total costs from METRICS table"""
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
-            
-            # TOTAL COSTS is in row 4 (fixed at 809.32)
-            summary_start_col = 15
-            value_col = chr(64 + summary_start_col + 1)
-            
-            try:
-                costs_cell = f'{value_col}4'
-                costs_value = sheet.acell(costs_cell).value or '$809.32'
-            except:
-                costs_value = '$809.32'
+            setup_costs = self.sheets_manager.get_metric("setup_costs")
+            if setup_costs is None:
+                setup_costs = 809.32
             
             return {
                 'success': True,
-                'message': f'💵 **Total Costs:** {costs_value}',
-                'data': {'costs': costs_value}
+                'message': f'💵 **Setup Costs:** ${setup_costs:,.2f}',
+                'data': {'setup_costs': setup_costs}
             }
         except Exception as e:
             return {'success': False, 'message': f"Error: {str(e)}"}
     
     def _get_profit_margin(self, command: str) -> Dict[str, Any]:
-        """Calculate and return profit margin"""
+        """Calculate and return profit margin from METRICS"""
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
+            revenue = self.sheets_manager.get_metric("total_revenue")
+            net_profit = self.sheets_manager.get_metric("net_profit_after_setup")
             
-            summary_start_col = 15
-            value_col = chr(64 + summary_start_col + 1)
+            if revenue is None:
+                revenue = 0.0
+            if net_profit is None:
+                net_profit = 0.0
             
-            try:
-                revenue_cell = f'{value_col}2'
-                profit_cell = f'{value_col}5'
-                
-                revenue_str = sheet.acell(revenue_cell).value or '0'
-                profit_str = sheet.acell(profit_cell).value or '0'
-                
-                # Extract numbers
-                revenue = float(re.sub(r'[^0-9.-]', '', str(revenue_str)))
-                profit = float(re.sub(r'[^0-9.-]', '', str(profit_str)))
-                
-                if revenue > 0:
-                    margin = (profit / revenue) * 100
-                    return {
-                        'success': True,
-                        'message': f'📊 **Profit Margin:** {margin:.2f}%',
-                        'data': {'profit_margin': margin, 'revenue': revenue, 'profit': profit}
-                    }
-                else:
-                    return {'success': False, 'message': 'Cannot calculate: Revenue is 0'}
-            except Exception as e:
-                return {'success': False, 'message': f"Error calculating margin: {str(e)}"}
+            if revenue > 0:
+                margin = (net_profit / revenue) * 100
+                return {
+                    'success': True,
+                    'message': f'📊 **Profit Margin:** {margin:.2f}%',
+                    'data': {'profit_margin': margin, 'revenue': revenue, 'net_profit': net_profit}
+                }
+            else:
+                return {'success': False, 'message': 'Cannot calculate: Revenue is 0'}
         except Exception as e:
             return {'success': False, 'message': f"Error: {str(e)}"}

@@ -64,18 +64,8 @@ class CostsAgent:
         }
     
     def _update_total_costs(self, command: str) -> Dict[str, Any]:
-        """Update TOTAL COSTS value in summary section"""
+        """Update setup_costs in METRICS table"""
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
-            
-            # Find summary section (starts at column O)
-            summary_start_col = 15  # Column O
-            value_col = chr(64 + summary_start_col + 1)  # Column P (value column)
-            
-            # TOTAL COSTS is in row 4
-            total_costs_row = 4
-            total_costs_cell = f'{value_col}{total_costs_row}'
-            
             # Extract number from command
             numbers = re.findall(r'\d+\.?\d*', command)
             if numbers:
@@ -83,46 +73,45 @@ class CostsAgent:
             else:
                 return {'success': False, 'message': 'Please specify a cost value, e.g., "update total costs to 1000"'}
             
-            # Update the cell with the new cost
-            sheet.update(total_costs_cell, new_cost)
+            # Update METRICS table
+            self.sheets_manager.set_metric("setup_costs", new_cost, "Setup Costs")
             
-            self.logger.info(f"Updated TOTAL COSTS in {total_costs_cell} to: {new_cost}")
+            # Recalculate metrics
+            try:
+                from metrics_calculator import calculate_and_update_metrics
+                calculate_and_update_metrics(self.sheets_manager)
+            except:
+                pass
+            
+            self.logger.info(f"Updated setup_costs in METRICS to: {new_cost}")
             
             return {
                 'success': True,
-                'message': f'✅ **TOTAL COSTS Updated!**\n\n'
-                          f'💵 New Total Costs: ${new_cost:.2f}\n'
-                          f'📍 Location: {total_costs_cell}\n\n'
-                          f'✅ Updated successfully',
+                'message': f'✅ **Setup Costs Updated!**\n\n'
+                          f'💵 New Setup Costs: ${new_cost:.2f}\n'
+                          f'📍 Updated in METRICS table\n\n'
+                          f'✅ All metrics recalculated',
                 'data': {
-                    'cell': total_costs_cell,
+                    'metric_key': 'setup_costs',
                     'value': new_cost
                 }
             }
             
         except Exception as e:
-            self.logger.error(f"Error updating total costs: {e}", exc_info=True)
+            self.logger.error(f"Error updating setup costs: {e}", exc_info=True)
             return {'success': False, 'message': f"Error: {str(e)}"}
     
     def _get_total_costs(self, command: str) -> Dict[str, Any]:
-        """Get total costs from summary"""
+        """Get setup costs from METRICS table"""
         try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("Orders")
-            
-            # Read costs from summary (column P, row 4)
-            summary_start_col = 15  # Column O
-            value_col = chr(64 + summary_start_col + 1)  # Column P
-            
-            try:
-                costs_cell = f'{value_col}4'
-                costs_value = sheet.acell(costs_cell).value or '$809.32'
-            except:
-                costs_value = '$809.32'
+            setup_costs = self.sheets_manager.get_metric("setup_costs")
+            if setup_costs is None:
+                setup_costs = 809.32
             
             return {
                 'success': True,
-                'message': f'💵 **Total Costs:** {costs_value}',
-                'data': {'costs': costs_value}
+                'message': f'💵 **Setup Costs:** ${setup_costs:,.2f}',
+                'data': {'setup_costs': setup_costs}
             }
         except Exception as e:
             return {'success': False, 'message': f"Error: {str(e)}"}

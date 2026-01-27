@@ -808,4 +808,446 @@ class SheetsManager:
             results['Customer Analytics'] = False
         
         return results
+    
+    def hide_sheet(self, sheet_name: str):
+        """Hide a sheet from view"""
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            sheet_id = sheet.id
+            requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "hidden": True
+                    },
+                    "fields": "hidden"
+                }
+            }]
+            self.spreadsheet.batch_update({"requests": requests})
+            self.logger.info(f"Hidden sheet: {sheet_name}")
+        except gspread.exceptions.WorksheetNotFound:
+            self.logger.warning(f"Sheet '{sheet_name}' not found, cannot hide")
+    
+    def show_sheet(self, sheet_name: str):
+        """Show a hidden sheet"""
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            sheet_id = sheet.id
+            requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "hidden": False
+                    },
+                    "fields": "hidden"
+                }
+            }]
+            self.spreadsheet.batch_update({"requests": requests})
+            self.logger.info(f"Shown sheet: {sheet_name}")
+        except gspread.exceptions.WorksheetNotFound:
+            self.logger.warning(f"Sheet '{sheet_name}' not found, cannot show")
+    
+    def freeze_header_row(self, sheet_name: str, num_rows: int = 1):
+        """Freeze header rows"""
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            sheet_id = sheet.id
+            requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {
+                            "frozenRowCount": num_rows
+                        }
+                    },
+                    "fields": "gridProperties.frozenRowCount"
+                }
+            }]
+            self.spreadsheet.batch_update({"requests": requests})
+            self.logger.info(f"Froze {num_rows} row(s) in sheet: {sheet_name}")
+        except gspread.exceptions.WorksheetNotFound:
+            self.logger.warning(f"Sheet '{sheet_name}' not found")
+    
+    def clear_gridlines(self, sheet_name: str):
+        """Clear gridlines on a sheet (makes it look cleaner)"""
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            sheet_id = sheet.id
+            requests = [{
+                "updateSheetProperties": {
+                    "properties": {
+                        "sheetId": sheet_id,
+                        "gridProperties": {
+                            "hideGridlines": True
+                        }
+                    },
+                    "fields": "gridProperties.hideGridlines"
+                }
+            }]
+            self.spreadsheet.batch_update({"requests": requests})
+            self.logger.info(f"Cleared gridlines on sheet: {sheet_name}")
+        except gspread.exceptions.WorksheetNotFound:
+            self.logger.warning(f"Sheet '{sheet_name}' not found")
+    
+    def insert_image(self, sheet_name: str, url: str, cell: str, width: int = 200, height: int = 100):
+        """
+        Insert an image into a sheet cell
+        Note: Google Sheets API doesn't directly support images, but we can use IMAGE() formula
+        """
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            image_formula = f'=IMAGE("{url}", 1, {width}, {height})'
+            sheet.update(cell, image_formula, value_input_option='USER_ENTERED')
+            self.logger.info(f"Inserted image at {cell} in sheet: {sheet_name}")
+        except Exception as e:
+            self.logger.error(f"Error inserting image: {e}")
+    
+    def create_manual_overrides_sheet(self):
+        """Create MANUAL_OVERRIDES sheet structure"""
+        sheet = self.create_sheet_if_not_exists("MANUAL_OVERRIDES")
+        
+        headers = ["order_id", "order_number", "psl", "shipping_label_cost", "notes", "updated_at", "updated_by"]
+        self.write_headers(sheet, headers)
+        
+        # Format headers
+        requests = [{
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet.id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(headers)
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2},
+                        "textFormat": {
+                            "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                            "bold": True,
+                            "fontSize": 11
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat"
+            }
+        }]
+        
+        # Set column widths
+        column_widths = {
+            0: 120,  # order_id
+            1: 120,  # order_number
+            2: 150,  # psl
+            3: 140,  # shipping_label_cost
+            4: 300,  # notes
+            5: 150,  # updated_at
+            6: 120   # updated_by
+        }
+        
+        for col_idx, width in column_widths.items():
+            requests.append({
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet.id,
+                        "dimension": "COLUMNS",
+                        "startIndex": col_idx,
+                        "endIndex": col_idx + 1
+                    },
+                    "properties": {"pixelSize": width},
+                    "fields": "pixelSize"
+                }
+            })
+        
+        self.spreadsheet.batch_update({"requests": requests})
+        self.freeze_header_row("MANUAL_OVERRIDES")
+        self.logger.info("Created MANUAL_OVERRIDES sheet")
+        return sheet
+    
+    def upsert_manual_override(self, order_id: str, order_number: str = None, 
+                               psl: str = None, shipping_label_cost: float = None, 
+                               notes: str = None, updated_by: str = "system"):
+        """
+        Upsert a row in MANUAL_OVERRIDES
+        Returns: (row_number, is_new)
+        """
+        from datetime import datetime
+        
+        sheet = self.create_sheet_if_not_exists("MANUAL_OVERRIDES")
+        all_data = sheet.get_all_values()
+        
+        # Find existing row by order_id
+        existing_row = None
+        for idx, row in enumerate(all_data[1:], start=2):  # Skip header
+            if len(row) > 0 and row[0] == str(order_id):
+                existing_row = idx
+                break
+        
+        # Prepare data
+        now = datetime.now().isoformat()
+        row_data = [
+            str(order_id),
+            order_number or "",
+            psl or "",
+            shipping_label_cost if shipping_label_cost is not None else "",
+            notes or "",
+            now,
+            updated_by
+        ]
+        
+        if existing_row:
+            # Update existing row
+            sheet.update(f"A{existing_row}:G{existing_row}", [row_data])
+            self.logger.info(f"Updated MANUAL_OVERRIDES row {existing_row} for order_id {order_id}")
+            return existing_row, False
+        else:
+            # Append new row
+            sheet.append_row(row_data)
+            self.logger.info(f"Added new MANUAL_OVERRIDES row for order_id {order_id}")
+            return len(all_data) + 1, True
+    
+    def get_manual_override(self, order_id: str = None, order_number: str = None):
+        """Get manual override data for an order"""
+        sheet = self.create_sheet_if_not_exists("MANUAL_OVERRIDES")
+        all_data = sheet.get_all_values()
+        
+        if not all_data or len(all_data) < 2:
+            return None
+        
+        # Find by order_id or order_number
+        for row in all_data[1:]:  # Skip header
+            if len(row) >= 2:
+                if order_id and row[0] == str(order_id):
+                    return {
+                        "order_id": row[0],
+                        "order_number": row[1] if len(row) > 1 else "",
+                        "psl": row[2] if len(row) > 2 else "",
+                        "shipping_label_cost": float(row[3]) if len(row) > 3 and row[3] else None,
+                        "notes": row[4] if len(row) > 4 else "",
+                        "updated_at": row[5] if len(row) > 5 else "",
+                        "updated_by": row[6] if len(row) > 6 else ""
+                    }
+                if order_number and len(row) > 1 and row[1] == str(order_number):
+                    return {
+                        "order_id": row[0],
+                        "order_number": row[1],
+                        "psl": row[2] if len(row) > 2 else "",
+                        "shipping_label_cost": float(row[3]) if len(row) > 3 and row[3] else None,
+                        "notes": row[4] if len(row) > 4 else "",
+                        "updated_at": row[5] if len(row) > 5 else "",
+                        "updated_by": row[6] if len(row) > 6 else ""
+                    }
+        
+        return None
+    
+    def get_all_manual_overrides(self):
+        """Get all manual overrides as a list of dicts"""
+        sheet = self.create_sheet_if_not_exists("MANUAL_OVERRIDES")
+        all_data = sheet.get_all_values()
+        
+        if not all_data or len(all_data) < 2:
+            return []
+        
+        headers = all_data[0]
+        results = []
+        
+        for row in all_data[1:]:
+            if len(row) > 0 and row[0]:  # Has order_id
+                override = {}
+                for idx, header in enumerate(headers):
+                    override[header] = row[idx] if idx < len(row) else ""
+                # Convert shipping_label_cost to float if present
+                if "shipping_label_cost" in override and override["shipping_label_cost"]:
+                    try:
+                        override["shipping_label_cost"] = float(override["shipping_label_cost"])
+                    except:
+                        override["shipping_label_cost"] = None
+                results.append(override)
+        
+        return results
+    
+    def create_metrics_sheet(self):
+        """Create METRICS sheet structure - single source of truth for all KPIs"""
+        sheet = self.create_sheet_if_not_exists("METRICS")
+        
+        headers = ["metric_key", "label", "value", "updated_at"]
+        self.write_headers(sheet, headers)
+        
+        # Initialize required metrics if sheet is empty
+        all_data = sheet.get_all_values()
+        if not all_data or len(all_data) < 2:
+            required_metrics = [
+                ["total_revenue", "Total Revenue", "0", ""],
+                ["total_units", "Total Units Sold", "0", ""],
+                ["total_cogs", "Total COGS", "0", ""],
+                ["total_shipping_label_cost", "Total Shipping Label Cost", "0", ""],
+                ["gross_profit", "Gross Profit", "0", ""],
+                ["contribution_profit", "Contribution Profit", "0", ""],
+                ["setup_costs", "Setup Costs", "809.32", ""],
+                ["net_profit_after_setup", "Net Profit After Setup", "0", ""],
+                ["unfulfilled_count", "Unfulfilled Orders", "0", ""],
+                ["missing_label_cost_count", "Missing Label Cost", "0", ""],
+            ]
+            sheet.update('A2', required_metrics)
+        
+        # Format headers
+        requests = [{
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet.id,
+                    "startRowIndex": 0,
+                    "endRowIndex": 1,
+                    "startColumnIndex": 0,
+                    "endColumnIndex": len(headers)
+                },
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2},
+                        "textFormat": {
+                            "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},
+                            "bold": True,
+                            "fontSize": 11
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat"
+            }
+        }]
+        
+        # Set column widths
+        column_widths = {
+            0: 200,  # metric_key
+            1: 200,  # label
+            2: 150,  # value
+            3: 180   # updated_at
+        }
+        
+        for col_idx, width in column_widths.items():
+            requests.append({
+                "updateDimensionProperties": {
+                    "range": {
+                        "sheetId": sheet.id,
+                        "dimension": "COLUMNS",
+                        "startIndex": col_idx,
+                        "endIndex": col_idx + 1
+                    },
+                    "properties": {"pixelSize": width},
+                    "fields": "pixelSize"
+                }
+            })
+        
+        self.spreadsheet.batch_update({"requests": requests})
+        self.freeze_header_row("METRICS")
+        self.logger.info("Created/verified METRICS sheet")
+        return sheet
+    
+    def get_metric(self, metric_key: str):
+        """Get metric value by key"""
+        sheet = self.create_sheet_if_not_exists("METRICS")
+        all_data = sheet.get_all_values()
+        
+        if not all_data or len(all_data) < 2:
+            return None
+        
+        headers = all_data[0]
+        try:
+            key_col_idx = headers.index("metric_key")
+            value_col_idx = headers.index("value")
+        except ValueError:
+            return None
+        
+        for row in all_data[1:]:
+            if len(row) > key_col_idx and row[key_col_idx] == metric_key:
+                if len(row) > value_col_idx:
+                    value = row[value_col_idx]
+                    try:
+                        return float(value)
+                    except:
+                        return value
+                return None
+        
+        return None
+    
+    def set_metric(self, metric_key: str, value, label: str = None):
+        """Set metric value by key (upsert)"""
+        from datetime import datetime
+        
+        sheet = self.create_sheet_if_not_exists("METRICS")
+        all_data = sheet.get_all_values()
+        
+        if not all_data:
+            all_data = [["metric_key", "label", "value", "updated_at"]]
+        
+        headers = all_data[0]
+        try:
+            key_col_idx = headers.index("metric_key")
+            label_col_idx = headers.index("label")
+            value_col_idx = headers.index("value")
+            updated_col_idx = headers.index("updated_at")
+        except ValueError:
+            self.logger.error("METRICS sheet missing required columns")
+            return False
+        
+        # Find existing row
+        existing_row = None
+        for idx, row in enumerate(all_data[1:], start=2):
+            if len(row) > key_col_idx and row[key_col_idx] == metric_key:
+                existing_row = idx
+                break
+        
+        now = datetime.now().isoformat()
+        value_str = str(value) if value is not None else "0"
+        
+        if existing_row:
+            # Update existing row
+            row_data = [""] * len(headers)
+            row_data[key_col_idx] = metric_key
+            row_data[label_col_idx] = label or metric_key.replace("_", " ").title()
+            row_data[value_col_idx] = value_str
+            row_data[updated_col_idx] = now
+            
+            # Ensure row has enough columns
+            while len(row_data) < len(headers):
+                row_data.append("")
+            
+            sheet.update(f"A{existing_row}:D{existing_row}", [row_data[:4]])
+            self.logger.info(f"Updated metric {metric_key} = {value_str}")
+        else:
+            # Append new row
+            row_data = [
+                metric_key,
+                label or metric_key.replace("_", " ").title(),
+                value_str,
+                now
+            ]
+            sheet.append_row(row_data)
+            self.logger.info(f"Added new metric {metric_key} = {value_str}")
+        
+        return True
+    
+    def get_all_metrics(self):
+        """Get all metrics as a dict"""
+        sheet = self.create_sheet_if_not_exists("METRICS")
+        all_data = sheet.get_all_values()
+        
+        if not all_data or len(all_data) < 2:
+            return {}
+        
+        headers = all_data[0]
+        try:
+            key_col_idx = headers.index("metric_key")
+            value_col_idx = headers.index("value")
+        except ValueError:
+            return {}
+        
+        metrics = {}
+        for row in all_data[1:]:
+            if len(row) > key_col_idx and row[key_col_idx]:
+                key = row[key_col_idx]
+                value = row[value_col_idx] if len(row) > value_col_idx else "0"
+                try:
+                    metrics[key] = float(value)
+                except:
+                    metrics[key] = value
+        
+        return metrics
 

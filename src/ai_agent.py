@@ -21,6 +21,9 @@ from finance_agent import FinanceAgent
 from chart_agent import ChartAgent
 from sync_agent import SyncAgent
 from costs_agent import CostsAgent
+from ops_agent import OpsAgent
+from format_agent import FormatAgent
+from catalog_agent import CatalogAgent
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +76,9 @@ class SheetsAIAgent:
         self.chart_agent = ChartAgent(self.sheets_manager)
         self.sync_agent = SyncAgent(self.sheets_manager, self.shopify_client, self.config)
         self.costs_agent = CostsAgent(self.sheets_manager)
+        self.ops_agent = OpsAgent(self.sheets_manager, self.shopify_client)
+        self.format_agent = FormatAgent(self.sheets_manager)
+        self.catalog_agent = CatalogAgent(self.sheets_manager, self.shopify_client)
         
         # Available commands the agent can execute
         self.available_commands = {
@@ -104,7 +110,7 @@ class SheetsAIAgent:
         
         return config
     
-    def process_command(self, command: str) -> Dict[str, Any]:
+    def process_command(self, command: str, dry_run: bool = False) -> Dict[str, Any]:
         """
         Process a natural language command and execute appropriate action
         
@@ -116,17 +122,44 @@ class SheetsAIAgent:
             - "backup PSL values"
         """
         command_lower = command.lower().strip()
-        logger.info(f"Processing command: {command}")
+        logger.info(f"Processing command: {command} (dry_run={dry_run})")
+        
+        # Check for "apply" suffix to override dry_run
+        if command_lower.endswith(' apply') or command_lower.endswith(' execute'):
+            dry_run = False
+            command = command.rsplit(' ', 1)[0]  # Remove "apply" suffix
+            command_lower = command.lower().strip()
         
         # Simple command matching (can be enhanced with NLP/AI later)
         response = {
             'success': False,
             'message': '',
             'data': None,
-            'command': command
+            'command': command,
+            'dry_run': dry_run
         }
         
         try:
+            # Ops Agent - fulfillment & manual overrides (highest priority for write commands)
+            if any(word in command_lower for word in ['shipping label cost', 'label cost', 'psl', 'unfulfilled', 
+                                                       'missing label', 'negative profit', 'fulfillment']):
+                result = self.ops_agent.process_command(command, dry_run)
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Ops command executed')
+                response['data'] = result.get('data')
+                if result.get('plan'):
+                    response['plan'] = result.get('plan')
+                return response
+            
+            # Format Agent - UI/branding
+            if any(word in command_lower for word in ['arcus theme', 'apply theme', 'format home', 'dashboard', 
+                                                      'brand', 'branding', 'make it look like arcus']):
+                result = self.format_agent.process_command(command)
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Format command executed')
+                response['data'] = result.get('data')
+                return response
+            
             # Sync Agent - handles syncing orders from Shopify
             if any(word in command_lower for word in ['sync', 'update', 'refresh', 'pull', 'fetch', 'get orders']):
                 if any(word in command_lower for word in ['order', 'sheet', 'shopify', 'data', 'everything', 'all']):
@@ -239,8 +272,19 @@ class SheetsAIAgent:
                 response['data'] = result
                 return response
             
+            # Catalog Agent - products, costs, pricing
+            if any(word in command_lower for word in ['sku', 'product', 'inventory', 'catalog', 'plan new product', 
+                                                       'set cost', 'suggest price', 'low stock']):
+                result = self.catalog_agent.process_command(command, dry_run)
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Catalog command executed')
+                response['data'] = result.get('data')
+                if result.get('plan'):
+                    response['plan'] = result.get('plan')
+                return response
+            
             # Chart Agent - handles chart creation
-            if any(word in command_lower for word in ['chart', 'graph', 'visualize', 'plot', 'create chart', 'make chart']):
+            if any(word in command_lower for word in ['chart', 'graph', 'visualize', 'plot', 'create chart', 'make chart', 'generate chart']):
                 result = self.chart_agent.process_command(command)
                 response['success'] = result.get('success', False)
                 response['message'] = result.get('message', 'Chart command executed')
@@ -269,25 +313,35 @@ class SheetsAIAgent:
             else:
                 # Default: more helpful error message
                 response['message'] = f"🤖 I can help you with:\n\n" \
+                                    f"📦 **Ops Agent** - Fulfillment & Manual Data:\n" \
+                                    f"  • 'set shipping label cost to 4.85 for order 1042' - Set label cost\n" \
+                                    f"  • 'set PSL to XYZ for order 1042' - Set PSL value\n" \
+                                    f"  • 'show unfulfilled orders' - List unfulfilled\n" \
+                                    f"  • 'show missing shipping label cost' - Find missing costs\n\n" \
                                     f"🔄 **Sync Agent** - Orders & Data:\n" \
                                     f"  • 'sync orders' - Update all orders from Shopify\n" \
-                                    f"  • 'backup PSL' - Save PSL values\n" \
-                                    f"  • 'restore PSL' - Restore PSL values\n\n" \
+                                    f"  • 'create setup costs sheet' - Create cost tracking sheet\n\n" \
                                     f"💵 **Costs Agent** - Cost Operations:\n" \
                                     f"  • 'update total costs to 1000' - Update TOTAL COSTS\n" \
                                     f"  • 'what's the total cost?' - Get total costs\n" \
                                     f"  • 'fix profit per shirt formula' - Fix Profit Per Shirt\n\n" \
+                                    f"💰 **Finance Agent** - Financial Calculations:\n" \
+                                    f"  • 'fix net profit formula' - Fix NET PROFIT\n" \
+                                    f"  • 'what's the total revenue?' - Get revenue\n" \
+                                    f"  • 'calculate profit margin' - Get profit margin\n\n" \
+                                    f"🎨 **Format Agent** - UI & Branding:\n" \
+                                    f"  • 'apply Arcus theme' - Apply Arcus branding\n" \
+                                    f"  • 'format HOME dashboard' - Create/format dashboard\n\n" \
                                     f"📝 **Sheets Agent** - Format & Modify:\n" \
                                     f"  • 'format orders sheet' - Style the sheet\n" \
-                                    f"  • 'fix net profit function' - Update formulas\n" \
                                     f"  • 'swap shipping cost with PSL' - Move columns\n" \
                                     f"  • 'add borders' - Format cells\n\n" \
                                     f"📊 **Data & Analytics:**\n" \
                                     f"  • 'show revenue' - Get sales totals\n" \
                                     f"  • 'orders summary' - Overview of all orders\n" \
                                     f"  • 'profit breakdown' - Profit analysis\n" \
-                                    f"  • 'top products' - Best sellers\n" \
-                                    f"  • 'top customers' - Best customers\n\n" \
+                                    f"  • 'top products' - Best sellers\n\n" \
+                                    f"💡 **Tip:** Add ' apply' to the end of write commands to execute them\n\n" \
                                     f"❓ I didn't understand: '{command}'\n" \
                                     f"Try one of the commands above!"
             

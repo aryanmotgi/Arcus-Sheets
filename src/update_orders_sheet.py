@@ -112,8 +112,11 @@ def update_orders_sheet():
         orders_df = processor.process_orders(orders)
         orders_df = processor.clean_data(orders_df)
         
-        # Get or create Orders sheet
-        sheet = manager.create_sheet_if_not_exists("Orders")
+        # Get or create RAW_ORDERS sheet (raw data, no manual edits)
+        sheet = manager.create_sheet_if_not_exists("RAW_ORDERS")
+        
+        # Ensure MANUAL_OVERRIDES sheet exists
+        manager.create_manual_overrides_sheet()
         
         # Clear existing data
         try:
@@ -895,7 +898,32 @@ def update_orders_sheet():
                 logger.warning("[PSL PROTECTION] No backup file found")
                 logger.warning("[PSL PROTECTION] TIP: Run 'python src/backup_restore_psl.py backup' before syncing next time")
         
-        logger.info("Orders sheet updated successfully!")
+        logger.info("RAW_ORDERS sheet updated successfully!")
+        
+        # Build view sheets that merge MANUAL_OVERRIDES
+        logger.info("Building view sheets (ORDERS, FULFILLMENT)...")
+        try:
+            from view_sheets_builder import build_orders_view, build_fulfillment_view
+            build_orders_view(manager, "RAW_ORDERS", "ORDERS")
+            build_fulfillment_view(manager, "RAW_ORDERS", "FULFILLMENT")
+            
+            # Hide RAW_ORDERS sheet by default
+            try:
+                manager.hide_sheet("RAW_ORDERS")
+            except:
+                pass
+            
+            logger.info("✅ View sheets built successfully!")
+            
+            # Update METRICS table after sync
+            try:
+                from metrics_calculator import calculate_and_update_metrics
+                calculate_and_update_metrics(manager)
+                logger.info("✅ METRICS table updated after sync")
+            except Exception as e:
+                logger.warning(f"Could not update METRICS: {e}")
+        except Exception as e:
+            logger.error(f"Error building view sheets: {e}", exc_info=True)
         
         # Create Setup and Costs sheet
         logger.info("=" * 60)
