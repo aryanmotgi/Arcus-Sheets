@@ -13,13 +13,16 @@
  */
 
 // ⚙️ CONFIGURATION - Update this with your server URL
-// Option 1: If running locally with ngrok, use your ngrok URL
-// Option 2: If deployed online, use your deployed URL
-const API_URL = 'http://localhost:8000/api/agent/command';
+// IMPORTANT: Replace with your actual Render URL (or ngrok URL for local testing)
+// Format: https://your-app-name.onrender.com/api/agent/command
+const API_URL = 'https://YOUR-APP-NAME.onrender.com/api/agent/command';
 
-// If you're using ngrok or a deployed server, replace the URL above with:
-// const API_URL = 'https://your-ngrok-url.ngrok.io/api/agent/command';
-// const API_URL = 'https://your-domain.com/api/agent/command';
+// ⚠️ SETUP INSTRUCTIONS:
+// 1. Deploy your app to Render (or use ngrok for local testing)
+// 2. Get your Render URL (e.g., https://arcus-sheets.onrender.com)
+// 3. Replace 'YOUR-APP-NAME.onrender.com' above with your actual Render URL
+// 4. Make sure the URL ends with '/api/agent/command'
+// 5. Save this script and test with "Ping API" button
 
 /**
  * Creates custom menu when spreadsheet opens
@@ -61,6 +64,16 @@ function showCommandDialog() {
  */
 function executeCommand(command) {
   try {
+    // Check if API_URL is configured
+    if (API_URL.includes('YOUR-APP-NAME') || API_URL.includes('localhost')) {
+      Logger.log('ERROR: API_URL not configured');
+      return {
+        success: false,
+        error: 'API_URL not configured',
+        message: '⚠️ API_URL is not set!\n\nPlease update API_URL in the script:\n1. Open Apps Script editor\n2. Find the API_URL constant at the top\n3. Replace with your Render URL:\n   https://your-app.onrender.com/api/agent/command\n4. Save and try again'
+      };
+    }
+    
     // Validate command
     if (!command || command.trim() === '') {
       Logger.log('ERROR: Empty command received');
@@ -81,7 +94,8 @@ function executeCommand(command) {
       'payload': JSON.stringify(payload),
       'muteHttpExceptions': true,
       'followRedirects': true,
-      'validateHttpsCertificates': false
+      'validateHttpsCertificates': false,
+      'timeout': 30000  // 30 second timeout
     };
     
     // Log request details
@@ -98,15 +112,28 @@ function executeCommand(command) {
     // Log response details
     Logger.log('=== API Response ===');
     Logger.log('Response Code: ' + responseCode);
-    Logger.log('Response Body: ' + responseText);
+    Logger.log('Response Body: ' + responseText.substring(0, 500)); // Limit log size
     
     // Check for HTTP errors
     if (responseCode < 200 || responseCode >= 300) {
       Logger.log('ERROR: HTTP error ' + responseCode);
+      
+      var errorMsg = 'Server returned error: ' + responseCode;
+      if (responseCode === 0 || responseCode === 502 || responseCode === 503) {
+        errorMsg += '\n\n⚠️ Service may be sleeping (free tier) or not responding.\n';
+        errorMsg += 'Try:\n1. Wait 30 seconds and try again\n';
+        errorMsg += '2. Check Render dashboard - is service running?\n';
+        errorMsg += '3. Check API_URL is correct: ' + API_URL;
+      } else if (responseCode === 404) {
+        errorMsg += '\n\n⚠️ Endpoint not found. Check API_URL:\n' + API_URL;
+        errorMsg += '\n\nShould end with: /api/agent/command';
+      }
+      errorMsg += '\n\nResponse: ' + responseText.substring(0, 200);
+      
       return {
         success: false,
         error: 'HTTP ' + responseCode,
-        message: 'Server returned error: ' + responseCode + '\n\nResponse: ' + responseText
+        message: errorMsg
       };
     }
     
@@ -116,15 +143,15 @@ function executeCommand(command) {
       result = JSON.parse(responseText);
     } catch (parseError) {
       Logger.log('ERROR: Failed to parse JSON response');
-      Logger.log('Response text: ' + responseText);
+      Logger.log('Response text: ' + responseText.substring(0, 500));
       return {
         success: false,
         error: 'Parse error',
-        message: 'Failed to parse server response:\n' + responseText
+        message: 'Failed to parse server response:\n' + responseText.substring(0, 200)
       };
     }
     
-    Logger.log('Parsed result: ' + JSON.stringify(result));
+    Logger.log('Parsed result: ' + JSON.stringify(result).substring(0, 500));
     
     return {
       success: true,
@@ -134,10 +161,24 @@ function executeCommand(command) {
     Logger.log('ERROR: Exception in executeCommand');
     Logger.log('Error: ' + error.toString());
     Logger.log('Stack: ' + error.stack);
+    
+    var errorMsg = 'Failed to connect to API.\n\n';
+    if (error.toString().includes('timeout') || error.toString().includes('timed out')) {
+      errorMsg += '⚠️ Request timed out. This usually means:\n';
+      errorMsg += '1. Service is sleeping (free tier) - wait 30 seconds\n';
+      errorMsg += '2. Service is not running - check Render dashboard\n';
+      errorMsg += '3. API_URL is wrong - check: ' + API_URL;
+    } else if (error.toString().includes('DNS') || error.toString().includes('hostname')) {
+      errorMsg += '⚠️ Cannot resolve hostname. Check API_URL:\n' + API_URL;
+    } else {
+      errorMsg += 'Error: ' + error.toString();
+      errorMsg += '\n\nMake sure:\n1. API_URL is correct\n2. Service is running on Render\n3. Check Apps Script Execution log for details';
+    }
+    
     return {
       success: false,
       error: error.toString(),
-      message: 'Failed to connect to API. Make sure:\n1. Your server is running (python run_app.py)\n2. API_URL is correct in the script\n3. If using localhost, use ngrok or deploy your server\n\nError: ' + error.toString()
+      message: errorMsg
     };
   }
 }
@@ -148,19 +189,58 @@ function executeCommand(command) {
 function pingApi() {
   try {
     Logger.log('=== PING API ===');
+    Logger.log('API_URL: ' + API_URL);
+    
+    // Check API_URL first
+    if (API_URL.includes('YOUR-APP-NAME') || API_URL.includes('localhost')) {
+      var ui = SpreadsheetApp.getUi();
+      ui.alert(
+        '⚠️ API URL Not Configured',
+        'Please update API_URL in the script:\n\n' +
+        '1. Open Apps Script editor (Extensions > Apps Script)\n' +
+        '2. Find: const API_URL = ...\n' +
+        '3. Replace with your Render URL:\n' +
+        '   https://your-app.onrender.com/api/agent/command\n\n' +
+        'Current URL: ' + API_URL,
+        ui.ButtonSet.OK
+      );
+      return { success: false, error: 'API_URL not configured' };
+    }
+    
     var result = executeCommand('ping');
     Logger.log('Ping result: ' + JSON.stringify(result));
     
     var ui = SpreadsheetApp.getUi();
     if (result.success) {
-      ui.alert('Ping Success', 'API is responding!\n\nResponse: ' + JSON.stringify(result.data, null, 2), ui.ButtonSet.OK);
+      var responseData = result.data && result.data.data ? JSON.stringify(result.data.data, null, 2) : JSON.stringify(result.data, null, 2);
+      ui.alert(
+        '✅ Ping Success',
+        'API is responding correctly!\n\n' +
+        'Response:\n' + responseData.substring(0, 500),
+        ui.ButtonSet.OK
+      );
     } else {
-      ui.alert('Ping Failed', 'API connection failed:\n\n' + result.message, ui.ButtonSet.OK);
+      ui.alert(
+        '❌ Ping Failed',
+        'API connection failed:\n\n' + result.message + '\n\n' +
+        'Check:\n' +
+        '1. Is Render service running?\n' +
+        '2. Is API_URL correct?\n' +
+        '3. View Apps Script Execution log for details',
+        ui.ButtonSet.OK
+      );
     }
     return result;
   } catch (error) {
     Logger.log('Ping error: ' + error.toString());
-    SpreadsheetApp.getUi().alert('Ping Error', 'Error: ' + error.toString(), ui.ButtonSet.OK);
+    Logger.log('Stack: ' + error.stack);
+    var ui = SpreadsheetApp.getUi();
+    ui.alert(
+      '❌ Ping Error',
+      'Error: ' + error.toString() + '\n\n' +
+      'Check Apps Script Execution log for details.',
+      ui.ButtonSet.OK
+    );
     return { success: false, error: error.toString() };
   }
 }
