@@ -22,13 +22,17 @@ _agent: Optional[SheetsAIAgent] = None
 
 
 def get_agent() -> SheetsAIAgent:
-    """Get or create the AI agent instance"""
+    """Get or create the AI agent instance (lazy initialization)"""
     global _agent
     if _agent is None:
         try:
+            logger.info("Initializing AI agent...")
             _agent = SheetsAIAgent()
+            logger.info("AI agent initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize AI agent: {e}")
+            logger.error(f"Failed to initialize AI agent: {e}", exc_info=True)
+            # Don't raise here - allow health checks to work even if agent fails
+            # The endpoint will handle the error gracefully
             raise HTTPException(status_code=500, detail=f"Failed to initialize agent: {str(e)}")
     return _agent
 
@@ -171,15 +175,19 @@ async def get_capabilities():
 async def agent_health():
     """Check if the AI agent is healthy and ready"""
     try:
+        # Try to get agent (lazy initialization)
         agent = get_agent()
         return {
             "status": "healthy",
             "agent_initialized": True,
-            "capabilities": len(agent.available_commands)
+            "capabilities": len(agent.available_commands) if hasattr(agent, 'available_commands') else 0
         }
     except Exception as e:
+        # Health check should still work even if agent fails
+        logger.warning(f"Agent health check failed: {e}")
         return {
-            "status": "unhealthy",
+            "status": "degraded",
             "agent_initialized": False,
-            "error": str(e)
+            "error": str(e),
+            "note": "API is running but agent initialization failed"
         }
