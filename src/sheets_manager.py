@@ -77,6 +77,11 @@ class SheetsManager:
         self._last_api_call_time = 0
         self._min_call_interval = 0.15  # 150ms default throttle
         self._api_call_count = {'reads': 0, 'writes': 0, 'batches': 0}
+        
+        # Import tab manifest
+        from tab_manifest import TAB_MANIFEST, ALL_TABS
+        self._tab_manifest = TAB_MANIFEST
+        self._all_tabs = ALL_TABS
     
     def get_or_create_spreadsheet(self, title: str = "Arcuswear Store Analytics") -> gspread.Spreadsheet:
         """
@@ -1481,4 +1486,269 @@ class SheetsManager:
     def reset_api_call_count(self):
         """Reset API call counter"""
         self._api_call_count = {'reads': 0, 'writes': 0, 'batches': 0}
+    
+    # ==================== TAB MANIFEST MANAGEMENT ====================
+    
+    def list_sheet_titles(self) -> List[str]:
+        """Get list of all sheet titles in the spreadsheet"""
+        try:
+            sheets = self.spreadsheet.worksheets()
+            return [sheet.title for sheet in sheets]
+        except Exception as e:
+            self.logger.error(f"Error listing sheet titles: {e}")
+            return []
+    
+    def detect_extra_tabs(self) -> List[str]:
+        """Detect tabs that are NOT in the manifest"""
+        existing_tabs = self.list_sheet_titles()
+        extra_tabs = [tab for tab in existing_tabs if tab not in self._all_tabs]
+        return extra_tabs
+    
+    def ensure_tabs_exist_and_named(self, create_missing: bool = True) -> Dict[str, bool]:
+        """
+        Ensure all manifest tabs exist with correct names
+        
+        Args:
+            create_missing: If True, create missing tabs. If False, only check.
+        
+        Returns:
+            Dict mapping tab_name -> exists (bool)
+        """
+        existing_tabs = self.list_sheet_titles()
+        result = {}
+        
+        for tab_name in self._all_tabs:
+            exists = tab_name in existing_tabs
+            result[tab_name] = exists
+            
+            if not exists and create_missing:
+                try:
+                    self.create_sheet_if_not_exists(tab_name)
+                    self.logger.info(f"Created missing manifest tab: {tab_name}")
+                    result[tab_name] = True
+                except Exception as e:
+                    self.logger.error(f"Error creating tab {tab_name}: {e}")
+                    result[tab_name] = False
+        
+        return result
+    
+    def hide_tabs(self, tab_names: List[str]):
+        """Hide specified tabs"""
+        try:
+            sheets = self.spreadsheet.worksheets()
+            requests = []
+            
+            for sheet in sheets:
+                if sheet.title in tab_names:
+                    requests.append({
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": sheet.id,
+                                "hidden": True
+                            },
+                            "fields": "hidden"
+                        }
+                    })
+            
+            if requests:
+                self.spreadsheet.batch_update({"requests": requests})
+                self.logger.info(f"Hidden tabs: {', '.join(tab_names)}")
+        except Exception as e:
+            self.logger.error(f"Error hiding tabs: {e}")
+    
+    def unhide_tabs(self, tab_names: List[str]):
+        """Unhide specified tabs"""
+        try:
+            sheets = self.spreadsheet.worksheets()
+            requests = []
+            
+            for sheet in sheets:
+                if sheet.title in tab_names:
+                    requests.append({
+                        "updateSheetProperties": {
+                            "properties": {
+                                "sheetId": sheet.id,
+                                "hidden": False
+                            },
+                            "fields": "hidden"
+                        }
+                    })
+            
+            if requests:
+                self.spreadsheet.batch_update({"requests": requests})
+                self.logger.info(f"Unhidden tabs: {', '.join(tab_names)}")
+        except Exception as e:
+            self.logger.error(f"Error unhiding tabs: {e}")
+    
+    def delete_sheet_safe(self, sheet_name: str, require_marker: bool = False) -> bool:
+        """
+        Safely delete a sheet if it's not in manifest
+        
+        Args:
+            sheet_name: Name of sheet to delete
+            require_marker: If True, only delete if A1 contains "Created by Arcus" or is blank
+        
+        Returns:
+            True if deleted, False if not safe to delete
+        """
+        if sheet_name in self._all_tabs:
+            self.logger.warning(f"Cannot delete manifest tab: {sheet_name}")
+            return False
+        
+        try:
+            sheet = self.spreadsheet.worksheet(sheet_name)
+            
+            if require_marker:
+                # Check A1 for marker
+                try:
+                    a1_value = sheet.acell('A1').value or ""
+                    if a1_value and "Created by Arcus" not in str(a1_value):
+                        # Not blank and no marker - don't delete
+                        self.logger.warning(f"Sheet {sheet_name} has data and no marker - skipping deletion")
+                        return False
+                except:
+                    # A1 is empty - safe to delete
+                    pass
+            
+            self.spreadsheet.del_worksheet(sheet)
+            self.logger.info(f"Deleted sheet: {sheet_name}")
+            return True
+        except gspread.exceptions.WorksheetNotFound:
+            self.logger.warning(f"Sheet {sheet_name} not found")
+            return False
+        except Exception as e:
+            self.logger.error(f"Error deleting sheet {sheet_name}: {e}")
+            return False
+    
+    def cleanup_extra_tabs(self, dry_run: bool = True) -> Dict[str, any]:
+        """
+        Clean up extra tabs (delete duplicates and non-manifest tabs)
+        
+        Args:
+            dry_run: If True, only report what would be deleted
+        
+        Returns:
+            Dict with 'deleted', 'skipped', 'warnings'
+        """
+        extra_tabs = self.detect_extra_tabs()
+        result = {
+            'deleted': [],
+            'skipped': [],
+            'warnings': []
+        }
+        
+        if not extra_tabs:
+            return result
+        
+        for tab_name in extra_tabs:
+            # Check if it's a duplicate (contains "(" or "copy" or similar)
+            is_duplicate = (
+                "(" in tab_name or 
+                ")" in tab_name or
+                "copy" in tab_name.lower() or
+                "Copy" in tab_name or
+                tab_name.endswith("_1") or
+                tab_name.endswith("_2")
+            )
+            
+            if is_duplicate:
+                if dry_run:
+                    result['deleted'].append(tab_name)
+                else:
+                    if self.delete_sheet_safe(tab_name, require_marker=True):
+                        result['deleted'].append(tab_name)
+                    else:
+                        result['skipped'].append(tab_name)
+            else:
+                # Not a duplicate - warn user
+                result['warnings'].append(tab_name)
+        
+        return result
+    
+    def add_tab_purpose_header(self, sheet_name: str):
+        """Add purpose header/banner to a tab"""
+        from tab_manifest import get_tab_purpose
+        
+        try:
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            purpose = get_tab_purpose(sheet_name)
+            
+            if not purpose:
+                return
+            
+            # Build header content
+            header_data = [
+                [purpose.get('title', sheet_name)],
+                [purpose.get('purpose', '')],
+                ['Use for: ' + ', '.join(purpose.get('use_for', []))],
+                ['Don\'t: ' + ', '.join(purpose.get('dont', []))],
+                ['Data source: ' + purpose.get('data_source', '')],
+                ['']  # Empty row before actual data
+            ]
+            
+            # Write header
+            sheet.update('A1:F6', header_data)
+            
+            # Format header
+            requests = [{
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet.id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,  # Title row
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 6
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.1, "green": 0.1, "blue": 0.1},  # Dark
+                            "textFormat": {
+                                "foregroundColor": {"red": 1.0, "green": 1.0, "blue": 1.0},  # White
+                                "fontSize": 16,
+                                "bold": True
+                            },
+                            "horizontalAlignment": "LEFT",
+                            "verticalAlignment": "MIDDLE"
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
+                }
+            }, {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet.id,
+                        "startRowIndex": 1,
+                        "endRowIndex": 5,  # Info rows
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 6
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95},  # Light grey
+                            "textFormat": {
+                                "fontSize": 10
+                            },
+                            "horizontalAlignment": "LEFT",
+                            "verticalAlignment": "TOP"
+                        }
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment)"
+                }
+            }, {
+                "mergeCells": {
+                    "range": {
+                        "sheetId": sheet.id,
+                        "startRowIndex": 0,
+                        "endRowIndex": 1,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 6
+                    },
+                    "mergeType": "MERGE_ALL"
+                }
+            }]
+            
+            self.spreadsheet.batch_update({"requests": requests})
+            self.logger.info(f"Added purpose header to {sheet_name}")
+        except Exception as e:
+            self.logger.error(f"Error adding purpose header to {sheet_name}: {e}")
 

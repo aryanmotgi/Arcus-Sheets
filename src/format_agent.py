@@ -25,17 +25,40 @@ class FormatAgent:
         self.sheets_manager = sheets_manager
         self.logger = logging.getLogger(__name__)
     
-    def process_command(self, command: str) -> Dict[str, Any]:
+    def process_command(self, command: str, apply_changes: bool = False) -> Dict[str, Any]:
         """
         Process formatting commands
         
         Examples:
             - "apply Arcus theme"
             - "format HOME dashboard"
-            - "make it look like Arcus"
-            - "brand the sheets"
+            - "cleanup tabs" (dry-run)
+            - "cleanup tabs apply"
+            - "reset arcus ui" (dry-run)
+            - "reset arcus ui apply"
         """
         command_lower = command.lower().strip()
+        
+        # Check for extra tabs first (guard)
+        extra_tabs = self.sheets_manager.detect_extra_tabs()
+        if extra_tabs:
+            return {
+                'success': False,
+                'message': f'⚠️ **Extra tabs detected!**\n\n'
+                          f'Arcus UI is locked to these tabs:\n'
+                          f'Visible: {", ".join(self.sheets_manager._tab_manifest["visible"])}\n'
+                          f'Hidden: {", ".join(self.sheets_manager._tab_manifest["hidden"])}\n\n'
+                          f'Found extra tabs: {", ".join(extra_tabs)}\n\n'
+                          f'Run "cleanup tabs apply" or delete them manually, then re-run your command.'
+            }
+        
+        # Cleanup commands
+        if 'cleanup tabs' in command_lower:
+            return self._cleanup_tabs(apply_changes)
+        
+        # Reset UI command
+        if 'reset arcus ui' in command_lower:
+            return self._reset_arcus_ui(apply_changes)
         
         # Theme/branding commands
         if any(phrase in command_lower for phrase in ['arcus theme', 'apply theme', 'brand', 'format home', 'dashboard']):
@@ -53,30 +76,74 @@ class FormatAgent:
             'message': 'Format Agent: I can help with:\n'
                       '• "apply Arcus theme" - Apply Arcus branding to all UI sheets\n'
                       '• "format HOME dashboard" - Create/format HOME dashboard\n'
-                      '• "make it look like Arcus" - Apply premium streetwear aesthetic'
+                      '• "cleanup tabs" - Show extra tabs (dry-run)\n'
+                      '• "cleanup tabs apply" - Delete duplicate tabs\n'
+                      '• "reset arcus ui apply" - Reset entire UI'
         }
     
     def _apply_arcus_theme(self) -> Dict[str, Any]:
-        """Apply Arcus theme to all UI sheets"""
+        """Apply Arcus theme to all UI sheets (idempotent)"""
         try:
-            ui_sheets = ["HOME", "ORDERS", "FULFILLMENT", "FINANCE", "PRODUCTS", "COSTS", "CHARTS", "SETTINGS"]
+            # Check if theme already applied
+            try:
+                settings_sheet = self.sheets_manager.create_sheet_if_not_exists("SETTINGS")
+                theme_marker = settings_sheet.acell('A1').value
+                if theme_marker and "ARCUS_THEME_APPLIED" in str(theme_marker):
+                    # Theme already applied - just refresh
+                    already_applied = True
+                else:
+                    already_applied = False
+            except:
+                already_applied = False
+            
+            # Ensure manifest tabs exist (only create missing ones)
+            self.sheets_manager.ensure_tabs_exist_and_named(create_missing=True)
+            
+            # Get visible UI sheets from manifest
+            ui_sheets = self.sheets_manager._tab_manifest["visible"]
             
             formatted = []
             for sheet_name in ui_sheets:
                 try:
                     sheet = self.sheets_manager.create_sheet_if_not_exists(sheet_name)
+                    
+                    # Add purpose header if not already present
+                    try:
+                        existing_a1 = sheet.acell('A1').value
+                        if not existing_a1 or "ARCUS" not in str(existing_a1):
+                            self.sheets_manager.add_tab_purpose_header(sheet_name)
+                    except:
+                        self.sheets_manager.add_tab_purpose_header(sheet_name)
+                    
+                    # Apply formatting
                     self._format_sheet_arcus_style(sheet)
                     formatted.append(sheet_name)
                 except Exception as e:
                     self.logger.warning(f"Could not format {sheet_name}: {e}")
             
+            # Hide system tabs
+            self.sheets_manager.hide_tabs(self.sheets_manager._tab_manifest["hidden"])
+            
+            # Mark theme as applied
+            try:
+                settings_sheet = self.sheets_manager.create_sheet_if_not_exists("SETTINGS")
+                settings_sheet.update('A1', [['ARCUS_THEME_APPLIED', datetime.now().isoformat()]])
+            except:
+                pass
+            
+            if already_applied:
+                message = f'✅ **Arcus Theme Refreshed!**\n\n'
+            else:
+                message = f'✅ **Arcus Theme Applied!**\n\n'
+            
+            message += f'📊 Formatted {len(formatted)} sheets:\n'
+            message += f'{", ".join(formatted)}\n\n'
+            message += f'✨ Premium streetwear aesthetic applied'
+            
             return {
                 'success': True,
-                'message': f'✅ **Arcus Theme Applied!**\n\n'
-                          f'📊 Formatted {len(formatted)} sheets:\n'
-                          f'{", ".join(formatted)}\n\n'
-                          f'✨ Premium streetwear aesthetic applied',
-                'data': {'formatted_sheets': formatted}
+                'message': message,
+                'data': {'formatted_sheets': formatted, 'refreshed': already_applied}
             }
         except Exception as e:
             return {'success': False, 'message': f'Error: {str(e)}'}

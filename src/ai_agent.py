@@ -151,10 +151,38 @@ class SheetsAIAgent:
                     response['plan'] = result.get('plan')
                 return response
             
-            # Format Agent - UI/branding
+            # Tab info commands (early routing)
+            if any(phrase in command_lower for phrase in ['what is each tab for', 'tab for', 'tab purpose', 'what tabs']):
+                from tab_manifest import format_tab_purposes_for_display
+                response['success'] = True
+                response['message'] = '📋 **Tab Purposes:**\n' + format_tab_purposes_for_display()
+                return response
+            
+            if any(phrase in command_lower for phrase in ['open workflow', 'daily workflow', 'workflow']):
+                workflow = (
+                    '📋 **Daily Arcus Workflow:**\n\n'
+                    '1. **HOME** - Check KPIs and see what needs action\n'
+                    '2. **ORDERS** - Review orders, set shipping label costs, add PSL/notes\n'
+                    '3. **FINANCE** - Review profit margins and financial health\n'
+                    '4. **METRICS** - See all calculated KPIs (auto-updated)\n'
+                    '5. **CHARTS** - Visualize trends and performance\n'
+                    '6. **PRODUCTS** - Manage catalog, costs, pricing\n'
+                    '7. **COSTS** - Track setup and operational costs\n'
+                    '8. **SETTINGS** - Configure Arcus theme and defaults\n\n'
+                    '💡 **Commands:**\n'
+                    '  • "sync orders" - Update from Shopify\n'
+                    '  • "apply Arcus theme" - Format all tabs\n'
+                    '  • "what is each tab for?" - See tab purposes\n'
+                    '  • "cleanup tabs apply" - Remove duplicates'
+                )
+                response['success'] = True
+                response['message'] = workflow
+                return response
+            
+            # Format Agent - UI/branding (includes cleanup/reset)
             if any(word in command_lower for word in ['arcus theme', 'apply theme', 'format home', 'dashboard', 
-                                                      'brand', 'branding', 'make it look like arcus']):
-                result = self.format_agent.process_command(command)
+                                                      'brand', 'branding', 'make it look like arcus', 'cleanup tabs', 'reset arcus ui']):
+                result = self.format_agent.process_command(command, apply_changes)
                 response['success'] = result.get('success', False)
                 response['message'] = result.get('message', 'Format command executed')
                 response['data'] = result.get('data')

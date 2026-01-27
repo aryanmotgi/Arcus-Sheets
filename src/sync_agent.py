@@ -86,8 +86,25 @@ class SyncAgent:
                 orders_before = 0
                 logger.info("📊 Starting fresh - no existing orders found")
             
+            # GUARD: Check for extra tabs before syncing
+            extra_tabs = self.sheets_manager.detect_extra_tabs()
+            if extra_tabs:
+                return {
+                    'status': 'error',
+                    'message': f'⚠️ **Extra tabs detected!**\n\n'
+                              f'Arcus UI is locked to these tabs:\n'
+                              f'Visible: {", ".join(self.sheets_manager._tab_manifest["visible"])}\n'
+                              f'Hidden: {", ".join(self.sheets_manager._tab_manifest["hidden"])}\n\n'
+                              f'Found extra tabs: {", ".join(extra_tabs)}\n\n'
+                              f'Run "cleanup tabs apply" or delete them manually, then re-run sync.',
+                    'timestamp': datetime.now().isoformat()
+                }
+            
             # Reset API call counter before sync
             self.sheets_manager.reset_api_call_count()
+            
+            # Ensure manifest tabs exist (only create missing ones)
+            self.sheets_manager.ensure_tabs_exist_and_named(create_missing=True)
             
             # Sync orders - this will fetch ALL orders from Shopify and write to RAW_ORDERS
             logger.info("🔄 Syncing orders from Shopify to RAW_ORDERS...")

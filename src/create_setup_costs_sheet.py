@@ -11,11 +11,12 @@ logger = logging.getLogger(__name__)
 def create_setup_costs_sheet(manager: SheetsManager):
     """Create and format the enhanced Setup and Costs sheet"""
     
-    logger.info("Creating enhanced Setup and Costs sheet...")
+        logger.info("Creating enhanced COSTS sheet...")
     
     # Create or get the sheet
     try:
-        sheet = manager.create_sheet_if_not_exists("Setup and Costs")
+        # Use manifest tab name "COSTS"
+        sheet = manager.create_sheet_if_not_exists("COSTS")
         
         # Clear existing content
         sheet.clear()
