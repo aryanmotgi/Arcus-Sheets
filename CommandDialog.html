@@ -212,9 +212,14 @@
       <div class="quick-btn" onclick="setCommand('profit breakdown')">Profit Breakdown</div>
       <div class="quick-btn" onclick="setCommand('product sales')">Product Sales</div>
       <div class="quick-btn" onclick="setCommand('backup PSL')">Backup PSL</div>
+      <div class="quick-btn" onclick="setCommand('reset arcus ui apply')">Reset UI</div>
+      <div class="quick-btn" onclick="setCommand('what is each tab for?')">Tab Info</div>
     </div>
     
-    <button id="executeBtn" onclick="executeCommand()">Execute Command</button>
+    <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+      <button id="executeBtn" onclick="executeCommand()" style="flex: 1;">Execute Command</button>
+      <button onclick="pingApi()" style="flex: 0 0 auto; padding: 12px 20px; background: #28a745; border: none; border-radius: 6px; color: white; cursor: pointer; font-size: 14px;">🔍 Ping</button>
+    </div>
     
     <div class="loading" id="loading">
       <div class="spinner"></div>
@@ -273,13 +278,45 @@
           loading.classList.remove('active');
           executeBtn.disabled = false;
           
-          if (result.success && result.data.success) {
+          console.log('Result received:', JSON.stringify(result, null, 2));
+          
+          // Handle response - check multiple possible formats
+          var isSuccess = false;
+          var message = '';
+          var data = null;
+          
+          if (result.success) {
+            // Apps Script wrapper succeeded
+            if (result.data) {
+              // Check if data has success field
+              if (result.data.success !== undefined) {
+                isSuccess = result.data.success;
+                message = result.data.message || 'Command executed';
+                data = result.data.data;
+              } else {
+                // Data is the response itself
+                isSuccess = true;
+                message = result.data.message || 'Command executed successfully';
+                data = result.data.data || result.data;
+              }
+            } else {
+              isSuccess = true;
+              message = 'Command executed successfully';
+            }
+          } else {
+            // Apps Script wrapper failed
+            isSuccess = false;
+            message = result.message || result.error || 'Command failed';
+            data = result;
+          }
+          
+          if (isSuccess) {
             response.className = 'response success';
             responseTitle.textContent = '✓ Success';
-            responseMessage.textContent = result.data.message || 'Command executed successfully';
+            responseMessage.textContent = message;
             
-            if (result.data.data) {
-              responseData.textContent = JSON.stringify(result.data.data, null, 2);
+            if (data) {
+              responseData.textContent = JSON.stringify(data, null, 2);
               responseData.style.display = 'block';
             } else {
               responseData.style.display = 'none';
@@ -289,8 +326,7 @@
           } else {
             response.className = 'response error';
             responseTitle.textContent = '✗ Error';
-            var errorMsg = result.success ? (result.data.message || 'Command failed') : result.message;
-            responseMessage.textContent = errorMsg;
+            responseMessage.textContent = message;
             responseData.textContent = JSON.stringify(result, null, 2);
             responseData.style.display = 'block';
             response.style.display = 'block';
@@ -300,14 +336,54 @@
           loading.classList.remove('active');
           executeBtn.disabled = false;
           
+          console.error('Error:', error);
+          
           response.className = 'response error';
           responseTitle.textContent = '✗ Error';
-          responseMessage.textContent = 'Failed to execute command: ' + error.message;
-          responseData.textContent = error.toString();
+          responseMessage.textContent = 'Failed to execute command: ' + (error.message || error.toString());
+          responseData.textContent = JSON.stringify(error, null, 2);
           responseData.style.display = 'block';
           response.style.display = 'block';
         })
         .executeCommand(command);
+    }
+    
+    function pingApi() {
+      var loading = document.getElementById('loading');
+      var response = document.getElementById('response');
+      var responseTitle = document.getElementById('responseTitle');
+      var responseMessage = document.getElementById('responseMessage');
+      var responseData = document.getElementById('responseData');
+      
+      loading.classList.add('active');
+      response.style.display = 'none';
+      
+      google.script.run
+        .withSuccessHandler(function(result) {
+          loading.classList.remove('active');
+          
+          console.log('Ping result:', JSON.stringify(result, null, 2));
+          
+          response.className = result.success ? 'response success' : 'response error';
+          responseTitle.textContent = result.success ? '✓ Ping Success' : '✗ Ping Failed';
+          responseMessage.textContent = result.success 
+            ? 'API is responding correctly!' 
+            : (result.message || result.error || 'API connection failed');
+          responseData.textContent = JSON.stringify(result, null, 2);
+          responseData.style.display = 'block';
+          response.style.display = 'block';
+        })
+        .withFailureHandler(function(error) {
+          loading.classList.remove('active');
+          
+          response.className = 'response error';
+          responseTitle.textContent = '✗ Ping Error';
+          responseMessage.textContent = 'Error: ' + (error.message || error.toString());
+          responseData.textContent = JSON.stringify(error, null, 2);
+          responseData.style.display = 'block';
+          response.style.display = 'block';
+        })
+        .pingApi();
     }
   </script>
 </body>

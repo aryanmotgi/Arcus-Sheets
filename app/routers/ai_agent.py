@@ -35,8 +35,21 @@ def get_agent() -> SheetsAIAgent:
 
 class AgentCommand(BaseModel):
     """Request model for agent commands"""
-    command: str
+    command: Optional[str] = None
+    text: Optional[str] = None
+    message: Optional[str] = None
+    prompt: Optional[str] = None
     context: Optional[Dict[str, Any]] = None
+    
+    def get_command(self) -> str:
+        """Get command from any of the possible fields"""
+        return (
+            self.command or 
+            self.text or 
+            self.message or 
+            self.prompt or 
+            ""
+        ).strip()
 
 
 class AgentResponse(BaseModel):
@@ -47,7 +60,7 @@ class AgentResponse(BaseModel):
     command: str
 
 
-@router.post("/command", response_model=AgentResponse)
+@router.post("/command")
 async def process_command(request: AgentCommand):
     """
     Process a natural language command with the AI agent
@@ -60,12 +73,49 @@ async def process_command(request: AgentCommand):
     - "backup PSL values"
     """
     try:
+        # Get command from any field
+        command = request.get_command()
+        
+        # Log request
+        logger.info(f"=== API Request ===")
+        logger.info(f"Command received: '{command}'")
+        logger.info(f"Full request: {request.dict()}")
+        
+        if not command:
+            logger.warning("Empty command received")
+            return {
+                "success": False,
+                "message": "No command provided. Please send a command in the 'command' field.",
+                "data": None,
+                "command": ""
+            }
+        
+        # Process command
         agent = get_agent()
-        response = agent.process_command(request.command)
-        return AgentResponse(**response)
+        response = agent.process_command(command)
+        
+        # Ensure response has required fields
+        if not isinstance(response, dict):
+            response = {"success": False, "message": "Invalid response format", "data": None}
+        
+        # Add command to response if missing
+        if "command" not in response:
+            response["command"] = command
+        
+        # Log response
+        logger.info(f"=== API Response ===")
+        logger.info(f"Success: {response.get('success', False)}")
+        logger.info(f"Message: {response.get('message', '')[:100]}...")
+        
+        return response
     except Exception as e:
         logger.error(f"Error processing command: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        return {
+            "success": False,
+            "message": f"Error processing command: {str(e)}",
+            "data": None,
+            "command": request.get_command() if hasattr(request, 'get_command') else ""
+        }
 
 
 @router.get("/capabilities")

@@ -330,3 +330,95 @@ class FormatAgent:
             sheet.spreadsheet.batch_update({"requests": requests})
         
         self.logger.info("HOME dashboard layout built")
+    
+    def _cleanup_tabs(self, apply_changes: bool) -> Dict[str, Any]:
+        """Clean up extra tabs"""
+        cleanup_result = self.sheets_manager.cleanup_extra_tabs(dry_run=not apply_changes)
+        
+        if not apply_changes:
+            # Dry run
+            message = '📋 **Cleanup Tabs (Dry Run)**\n\n'
+            if cleanup_result['deleted']:
+                message += f'Would delete: {", ".join(cleanup_result["deleted"])}\n'
+            if cleanup_result['skipped']:
+                message += f'Would skip: {", ".join(cleanup_result["skipped"])}\n'
+            if cleanup_result['warnings']:
+                message += f'⚠️ Manual review needed: {", ".join(cleanup_result["warnings"])}\n'
+            if not cleanup_result['deleted'] and not cleanup_result['warnings']:
+                message += '✅ No extra tabs found!'
+            message += '\n\nAdd " apply" to execute cleanup.'
+        else:
+            # Apply
+            message = '✅ **Tabs Cleaned Up!**\n\n'
+            if cleanup_result['deleted']:
+                message += f'Deleted: {", ".join(cleanup_result["deleted"])}\n'
+            if cleanup_result['skipped']:
+                message += f'Skipped (not safe): {", ".join(cleanup_result["skipped"])}\n'
+            if cleanup_result['warnings']:
+                message += f'⚠️ Manual review needed: {", ".join(cleanup_result["warnings"])}\n'
+            if not cleanup_result['deleted'] and not cleanup_result['warnings']:
+                message += '✅ No extra tabs found!'
+        
+        return {
+            'success': True,
+            'message': message,
+            'data': cleanup_result
+        }
+    
+    def _reset_arcus_ui(self, apply_changes: bool) -> Dict[str, Any]:
+        """Reset entire Arcus UI"""
+        if not apply_changes:
+            # Dry run
+            extra_tabs = self.sheets_manager.detect_extra_tabs()
+            missing_tabs = []
+            for tab in self.sheets_manager._all_tabs:
+                if tab not in self.sheets_manager.list_sheet_titles():
+                    missing_tabs.append(tab)
+            
+            message = '📋 **Reset Arcus UI (Dry Run)**\n\n'
+            message += f'Would ensure tabs exist: {", ".join(self.sheets_manager._all_tabs)}\n'
+            if extra_tabs:
+                message += f'Would clean up: {", ".join(extra_tabs)}\n'
+            if missing_tabs:
+                message += f'Would create: {", ".join(missing_tabs)}\n'
+            message += '\nWould apply Arcus theme and purpose headers.\n'
+            message += '\nAdd " apply" to execute reset.'
+            
+            return {
+                'success': True,
+                'message': message,
+                'data': {'extra_tabs': extra_tabs, 'missing_tabs': missing_tabs}
+            }
+        
+        # Apply reset
+        try:
+            # 1. Cleanup extra tabs
+            cleanup_result = self.sheets_manager.cleanup_extra_tabs(dry_run=False)
+            
+            # 2. Ensure manifest tabs exist
+            self.sheets_manager.ensure_tabs_exist_and_named(create_missing=True)
+            
+            # 3. Apply theme (which adds purpose headers)
+            theme_result = self._apply_arcus_theme()
+            
+            # 4. Hide system tabs
+            self.sheets_manager.hide_tabs(self.sheets_manager._tab_manifest["hidden"])
+            
+            message = '✅ **Arcus UI Reset Complete!**\n\n'
+            message += f'📊 Ensured {len(self.sheets_manager._all_tabs)} manifest tabs exist\n'
+            if cleanup_result['deleted']:
+                message += f'🗑️ Deleted {len(cleanup_result["deleted"])} extra tabs\n'
+            message += f'✨ Applied Arcus theme\n'
+            message += f'📝 Added purpose headers\n'
+            message += f'🔒 Hidden system tabs'
+            
+            return {
+                'success': True,
+                'message': message,
+                'data': {
+                    'cleanup': cleanup_result,
+                    'theme': theme_result.get('data', {})
+                }
+            }
+        except Exception as e:
+            return {'success': False, 'message': f'Error: {str(e)}'}

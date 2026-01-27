@@ -37,6 +37,8 @@ function onOpen() {
     .addSeparator()
     .addItem('💾 Backup PSL', 'backupPSL')
     .addItem('📥 Restore PSL', 'restorePSL')
+    .addSeparator()
+    .addItem('🔍 Ping API (Debug)', 'pingApi')
     .addToUi();
 }
 
@@ -59,8 +61,18 @@ function showCommandDialog() {
  */
 function executeCommand(command) {
   try {
+    // Validate command
+    if (!command || command.trim() === '') {
+      Logger.log('ERROR: Empty command received');
+      return {
+        success: false,
+        error: 'Empty command',
+        message: 'Please enter a command'
+      };
+    }
+    
     var payload = {
-      'command': command
+      'command': command.trim()
     };
     
     var options = {
@@ -72,21 +84,84 @@ function executeCommand(command) {
       'validateHttpsCertificates': false
     };
     
-    // For localhost, we need to use a workaround
-    // If you're using localhost, you'll need ngrok or a deployed server
+    // Log request details
+    Logger.log('=== API Request ===');
+    Logger.log('API_URL: ' + API_URL);
+    Logger.log('Command: ' + command);
+    Logger.log('Payload: ' + JSON.stringify(payload));
+    
+    // Make request
     var response = UrlFetchApp.fetch(API_URL, options);
-    var result = JSON.parse(response.getContentText());
+    var responseCode = response.getResponseCode();
+    var responseText = response.getContentText();
+    
+    // Log response details
+    Logger.log('=== API Response ===');
+    Logger.log('Response Code: ' + responseCode);
+    Logger.log('Response Body: ' + responseText);
+    
+    // Check for HTTP errors
+    if (responseCode < 200 || responseCode >= 300) {
+      Logger.log('ERROR: HTTP error ' + responseCode);
+      return {
+        success: false,
+        error: 'HTTP ' + responseCode,
+        message: 'Server returned error: ' + responseCode + '\n\nResponse: ' + responseText
+      };
+    }
+    
+    // Parse JSON response
+    var result;
+    try {
+      result = JSON.parse(responseText);
+    } catch (parseError) {
+      Logger.log('ERROR: Failed to parse JSON response');
+      Logger.log('Response text: ' + responseText);
+      return {
+        success: false,
+        error: 'Parse error',
+        message: 'Failed to parse server response:\n' + responseText
+      };
+    }
+    
+    Logger.log('Parsed result: ' + JSON.stringify(result));
     
     return {
       success: true,
       data: result
     };
   } catch (error) {
+    Logger.log('ERROR: Exception in executeCommand');
+    Logger.log('Error: ' + error.toString());
+    Logger.log('Stack: ' + error.stack);
     return {
       success: false,
       error: error.toString(),
-      message: 'Failed to connect to API. Make sure:\n1. Your server is running (python run_app.py)\n2. API_URL is correct in the script\n3. If using localhost, use ngrok or deploy your server'
+      message: 'Failed to connect to API. Make sure:\n1. Your server is running (python run_app.py)\n2. API_URL is correct in the script\n3. If using localhost, use ngrok or deploy your server\n\nError: ' + error.toString()
     };
+  }
+}
+
+/**
+ * Ping API to test connection (debug function)
+ */
+function pingApi() {
+  try {
+    Logger.log('=== PING API ===');
+    var result = executeCommand('ping');
+    Logger.log('Ping result: ' + JSON.stringify(result));
+    
+    var ui = SpreadsheetApp.getUi();
+    if (result.success) {
+      ui.alert('Ping Success', 'API is responding!\n\nResponse: ' + JSON.stringify(result.data, null, 2), ui.ButtonSet.OK);
+    } else {
+      ui.alert('Ping Failed', 'API connection failed:\n\n' + result.message, ui.ButtonSet.OK);
+    }
+    return result;
+  } catch (error) {
+    Logger.log('Ping error: ' + error.toString());
+    SpreadsheetApp.getUi().alert('Ping Error', 'Error: ' + error.toString(), ui.ButtonSet.OK);
+    return { success: false, error: error.toString() };
   }
 }
 

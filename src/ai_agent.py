@@ -124,6 +124,14 @@ class SheetsAIAgent:
         command_lower = command.lower().strip()
         logger.info(f"Processing command: {command} (dry_run={dry_run})")
         
+        # Ping command (for testing API connection)
+        if command_lower == 'ping':
+            return {
+                'success': True,
+                'message': '✅ **Ping Successful!**\n\nAPI is responding correctly.\n\nBackend is connected and ready.',
+                'data': {'status': 'ok', 'timestamp': datetime.now().isoformat()}
+            }
+        
         # Check for "apply" suffix to override dry_run
         if command_lower.endswith(' apply') or command_lower.endswith(' execute'):
             dry_run = False
