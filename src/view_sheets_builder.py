@@ -17,15 +17,32 @@ def build_orders_view(manager, raw_sheet_name: str = "RAW_ORDERS", view_sheet_na
     logger.info(f"Building {view_sheet_name} view from {raw_sheet_name}...")
     
     try:
-        # Get RAW_ORDERS data
+        # OPTIMIZED: Get headers using cached method
         raw_sheet = manager.create_sheet_if_not_exists(raw_sheet_name)
-        raw_data = raw_sheet.get_all_values()
+        raw_headers, _ = manager.get_headers_cached(raw_sheet_name)
         
-        if not raw_data or len(raw_data) < 2:
+        if not raw_headers:
+            logger.warning(f"{raw_sheet_name} has no headers, cannot build view")
+            return
+        
+        # OPTIMIZED: Get data using batch (read only used range, not full sheet)
+        # First, get row count by reading a small range
+        try:
+            sample_data = raw_sheet.get_values('A2:A1000')  # Sample to find last row
+            num_data_rows = len([r for r in sample_data if r and r[0]]) if sample_data else 0
+        except:
+            num_data_rows = 0
+        
+        if num_data_rows == 0:
             logger.warning(f"{raw_sheet_name} is empty, cannot build view")
             return
         
-        raw_headers = raw_data[0]
+        # OPTIMIZED: Read only needed columns in one batch
+        # Read all data rows for key columns only
+        last_row = num_data_rows + 1
+        raw_data = raw_sheet.get_values(f'A2:{chr(64 + len(raw_headers))}{last_row}')
+        if not raw_data:
+            raw_data = []
         
         # Find key columns in RAW_ORDERS
         try:

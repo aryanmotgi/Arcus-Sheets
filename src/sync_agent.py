@@ -86,6 +86,9 @@ class SyncAgent:
                 orders_before = 0
                 logger.info("📊 Starting fresh - no existing orders found")
             
+            # Reset API call counter before sync
+            self.sheets_manager.reset_api_call_count()
+            
             # Sync orders - this will fetch ALL orders from Shopify and write to RAW_ORDERS
             logger.info("🔄 Syncing orders from Shopify to RAW_ORDERS...")
             logger.info("⏳ This may take a moment - fetching fresh data from Shopify...")
@@ -108,6 +111,9 @@ class SyncAgent:
             orders_synced = orders_after
             new_orders = orders_after - orders_before
             
+            # Get API call summary
+            api_summary = self.sheets_manager.get_api_call_summary()
+            
             # Build success message
             message = f'✅ **Sync Complete!**\n\n'
             message += f'📊 **Summary:**\n'
@@ -121,7 +127,14 @@ class SyncAgent:
             message += f'  • ✅ Preserved in MANUAL_OVERRIDES sheet\n'
             message += f'  • ✅ Merged into ORDERS view automatically\n'
             
+            message += f'\n📈 **API Calls:**\n'
+            message += f'  • Reads: {api_summary["reads"]}\n'
+            message += f'  • Writes: {api_summary["writes"]}\n'
+            message += f'  • Batches: {api_summary["batches"]}\n'
+            
             message += f'\n🔄 All orders synced from Shopify to Google Sheets'
+            
+            logger.info(f"📊 Sync API Summary: {api_summary['reads']} reads, {api_summary['writes']} writes, {api_summary['batches']} batches")
             
             return {
                 'status': 'success',
@@ -130,7 +143,8 @@ class SyncAgent:
                     'orders_synced': orders_synced,
                     'new_orders': new_orders,
                     'orders_before': orders_before,
-                    'orders_after': orders_after
+                    'orders_after': orders_after,
+                    'api_calls': api_summary
                 },
                 'timestamp': datetime.now().isoformat()
             }

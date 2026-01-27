@@ -93,15 +93,31 @@ def migrate_psl_values():
         logger.error("Could not find Orders or RAW_ORDERS sheet!")
         return
     
-    # Read source data
+    # OPTIMIZED: Read headers using cached method
     logger.info(f"Reading PSL values from {source_sheet_name}...")
-    source_data = source_sheet.get_all_values()
+    headers, _ = manager.get_headers_cached(source_sheet_name)
     
-    if not source_data or len(source_data) < 2:
-        logger.warning(f"{source_sheet_name} is empty, nothing to migrate")
+    if not headers:
+        logger.warning(f"{source_sheet_name} has no headers, nothing to migrate")
         return
     
-    headers = source_data[0]
+    # OPTIMIZED: Read only needed columns in batch, not full sheet
+    # Find last row first
+    try:
+        sample = source_sheet.get_values('A2:A1000')
+        num_rows = len([r for r in sample if r and r[0]]) if sample else 0
+        if num_rows == 0:
+            logger.warning(f"{source_sheet_name} is empty, nothing to migrate")
+            return
+        last_row = num_rows + 1
+        # Read only needed columns
+        source_data = [headers]  # Start with headers
+        data_rows = source_sheet.get_values(f'A2:{chr(64 + len(headers))}{last_row}')
+        if data_rows:
+            source_data.extend(data_rows)
+    except Exception as e:
+        logger.error(f"Error reading source data: {e}")
+        return
     
     # Find PSL column
     try:
@@ -181,23 +197,32 @@ def migrate_psl_values():
             skipped += 1
             continue
         
-        # If no order_id, try to find it from RAW_ORDERS or ORDERS
+        # OPTIMIZED: If no order_id, try to find it from RAW_ORDERS using cached headers
         if not order_id:
-            # Try to look it up
             try:
-                lookup_sheet = manager.create_sheet_if_not_exists("RAW_ORDERS")
-                lookup_data = lookup_sheet.get_all_values()
-                if lookup_data and len(lookup_data) > 1:
-                    lookup_headers = lookup_data[0]
+                lookup_headers, _ = manager.get_headers_cached("RAW_ORDERS")
+                if lookup_headers:
                     try:
                         lookup_num_col = lookup_headers.index("Order Number")
                         lookup_id_col = lookup_headers.index("Order ID")
-                        for lookup_row in lookup_data[1:]:
-                            if len(lookup_row) > lookup_num_col and str(lookup_row[lookup_num_col]) == order_number:
-                                if len(lookup_row) > lookup_id_col:
-                                    order_id = str(lookup_row[lookup_id_col])
-                                    break
-                    except ValueError:
+                        # Read only needed columns in batch
+                        lookup_sheet = manager.create_sheet_if_not_exists("RAW_ORDERS")
+                        lookup_sample = lookup_sheet.get_values('A2:A1000')
+                        lookup_num_rows = len([r for r in lookup_sample if r and r[0]]) if lookup_sample else 0
+                        if lookup_num_rows > 0:
+                            lookup_last_row = lookup_num_rows + 1
+                            num_col_letter = chr(64 + lookup_num_col + 1)
+                            id_col_letter = chr(64 + lookup_id_col + 1)
+                            # Batch read order_number and order_id columns
+                            num_data = lookup_sheet.get_values(f'{num_col_letter}2:{num_col_letter}{lookup_last_row}')
+                            id_data = lookup_sheet.get_values(f'{id_col_letter}2:{id_col_letter}{lookup_last_row}')
+                            if num_data and id_data:
+                                for i, num_row in enumerate(num_data):
+                                    if num_row and str(num_row[0]) == order_number:
+                                        if i < len(id_data) and id_data[i]:
+                                            order_id = str(id_data[i][0])
+                                            break
+                    except (ValueError, IndexError):
                         pass
             except:
                 pass

@@ -29,10 +29,30 @@ def calculate_and_update_metrics(sheets_manager):
         # Ensure METRICS sheet exists
         sheets_manager.create_metrics_sheet()
         
-        # Get ORDERS data
+        # OPTIMIZED: Get headers using cached method
         try:
             orders_sheet = sheets_manager.create_sheet_if_not_exists("ORDERS")
-            orders_data = orders_sheet.get_all_values()
+            headers, _ = sheets_manager.get_headers_cached("ORDERS")
+            
+            if not headers:
+                orders_data = []
+            else:
+                # OPTIMIZED: Read only used range, not full sheet
+                # Find last row
+                try:
+                    sample = orders_sheet.get_values('A2:A1000')
+                    num_rows = len([r for r in sample if r and r[0]]) if sample else 0
+                    if num_rows > 0:
+                        last_row = num_rows + 1
+                        # Read only needed columns in batch
+                        orders_data = [headers]  # Start with headers
+                        data_rows = orders_sheet.get_values(f'A2:{chr(64 + len(headers))}{last_row}')
+                        if data_rows:
+                            orders_data.extend(data_rows)
+                    else:
+                        orders_data = [headers]
+                except:
+                    orders_data = [headers]
         except:
             logger.warning("ORDERS sheet not found, using empty data")
             orders_data = []

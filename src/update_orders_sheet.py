@@ -144,213 +144,14 @@ def update_orders_sheet():
         # Start from column A
         start_col = 1  # Column A
         
-        # CRITICAL: Read existing PSL values BEFORE writing headers or any data
-        # Use individual cell reads as a more reliable method
-        existing_psl_values_by_row = {}  # Map sheet_row_number -> PSL value
-        existing_psl_values_by_key = {}  # Map (customer, product, date) -> PSL value
+        # NOTE: PSL values are now stored in MANUAL_OVERRIDES, not in RAW_ORDERS
+        # No need to read existing PSL values - they're preserved in MANUAL_OVERRIDES
         
-        try:
-            psl_col_letter = 'G'  # PSL is in column G based on headers
-            logger.info(f"[PSL PROTECTION] Reading PSL column {psl_col_letter} using individual cell reads...")
-            
-            # Method 1: Read individual cells for rows 2-100 (more reliable than range reads)
-            psl_values_read = 0
-            for row_num in range(2, 101):  # Rows 2-100
-                try:
-                    cell_ref = f'{psl_col_letter}{row_num}'
-                    cell_value = sheet.acell(cell_ref, value_render_option='FORMATTED_VALUE').value
-                    if cell_value and str(cell_value).strip() != '':
-                        psl_val_str = str(cell_value).strip()
-                        psl_val_clean = psl_val_str.replace('$', '').replace(',', '').strip()
-                        if psl_val_clean != '' and psl_val_clean != '0':
-                            existing_psl_values_by_row[row_num] = psl_val_str
-                            psl_values_read += 1
-                            if psl_values_read <= 5:  # Log first 5
-                                logger.info(f"[PSL PROTECTION] Found PSL in row {row_num}: '{psl_val_str}'")
-                except Exception as cell_err:
-                    # Cell might be empty or doesn't exist - that's okay
-                    continue
-            
-            logger.info(f"[PSL PROTECTION] Successfully read {psl_values_read} PSL values using individual cell reads")
-            
-            # Also try to read headers and full data for key-based matching
-            existing_sheet_data = []
-            existing_headers = []
-            try:
-                existing_sheet_data = sheet.get_all_values()
-                logger.info(f"[PSL PROTECTION] get_all_values() returned {len(existing_sheet_data)} total rows")
-                if existing_sheet_data:
-                    existing_headers = existing_sheet_data[0] if existing_sheet_data else []
-                    logger.info(f"[PSL PROTECTION] Existing headers: {existing_headers}")
-            except Exception as e3:
-                logger.warning(f"[PSL PROTECTION] get_all_values() failed: {e3}")
-            
-            if len(existing_sheet_data) > 0:
-                
-                # Find PSL column in existing sheet (may be named differently)
-                existing_psl_col_idx = None
-                for idx, h in enumerate(existing_headers):
-                    if h:
-                        h_clean = str(h).strip().lower()
-                        if h_clean in ['psl', 'manual input', 'private shipping label']:
-                            existing_psl_col_idx = idx
-                            logger.info(f"[PSL PROTECTION] Found PSL column at index {idx}: '{h}'")
-                            break
-                
-                # Also try reading PSL column directly if we have headers
-                logger.info(f"[PSL PROTECTION] PSL column data length: {len(psl_column_data) if psl_column_data else 0}")
-                
-                if psl_column_data and len(psl_column_data) > 0:
-                    # Read PSL values directly from column G (data starts at row 2)
-                    for row_idx, psl_row in enumerate(psl_column_data, start=2):  # Start at row 2 (first data row)
-                        if psl_row and len(psl_row) > 0:
-                            psl_val = psl_row[0] if isinstance(psl_row, list) else psl_row
-                            psl_val_str = str(psl_val).strip() if psl_val else ''
-                            psl_val_clean = psl_val_str.replace('$', '').replace(',', '').strip()
-                            
-                            if psl_val_str and psl_val_clean != '' and psl_val_clean != '0':
-                                # Only add if not already found
-                                if row_idx not in existing_psl_values_by_row:
-                                    existing_psl_values_by_row[row_idx] = psl_val_str
-                                    logger.info(f"[PSL PROTECTION] Found PSL value in row {row_idx} from direct read: '{psl_val_str}'")
-                
-                if existing_psl_col_idx is not None and len(existing_sheet_data) > 1:
-                    # Find customer, product, date columns for key matching
-                    customer_col_idx = next((i for i, h in enumerate(existing_headers) if h and 'customer' in str(h).lower()), None)
-                    product_col_idx = next((i for i, h in enumerate(existing_headers) if h and 'product' in str(h).lower()), None)
-                    date_col_idx = next((i for i, h in enumerate(existing_headers) if h and 'date' in str(h).lower()), None)
-                    
-                    logger.info(f"[PSL PROTECTION] Customer col: {customer_col_idx}, Product col: {product_col_idx}, Date col: {date_col_idx}, PSL col: {existing_psl_col_idx}")
-                    
-                    # Also read from full sheet data if available
-                    for row_idx, row_data in enumerate(existing_sheet_data[1:], start=2):  # Row 2 is first data row
-                        if not isinstance(row_data, list):
-                            continue
-                        
-                        # Expand row_data if needed
-                        while len(row_data) <= existing_psl_col_idx:
-                            row_data.append('')
-                        
-                        if len(row_data) > existing_psl_col_idx:
-                            psl_val = row_data[existing_psl_col_idx]
-                            psl_val_str = str(psl_val).strip() if psl_val is not None else ''
-                            psl_val_clean = psl_val_str.replace('$', '').replace(',', '').strip()
-                            
-                            if psl_val_str and psl_val_clean != '' and psl_val_clean != '0':
-                                # Only add if not already found from direct read
-                                if row_idx not in existing_psl_values_by_row:
-                                    existing_psl_values_by_row[row_idx] = psl_val_str
-                                    logger.info(f"[PSL PROTECTION] Found PSL value in row {row_idx} from full sheet read: '{psl_val_str}'")
-                                
-                                # Create key-based mapping
-                                if customer_col_idx is not None and product_col_idx is not None and date_col_idx is not None:
-                                    max_col_needed = max(customer_col_idx, product_col_idx, date_col_idx, existing_psl_col_idx)
-                                    while len(row_data) <= max_col_needed:
-                                        row_data.append('')
-                                    
-                                    if len(row_data) > max_col_needed:
-                                        customer_val = str(row_data[customer_col_idx]).strip() if len(row_data) > customer_col_idx else ''
-                                        product_val = str(row_data[product_col_idx]).strip() if len(row_data) > product_col_idx else ''
-                                        date_val = str(row_data[date_col_idx]).strip() if len(row_data) > date_col_idx else ''
-                                        
-                                        key = (
-                                            customer_val.lower(),
-                                            product_val.lower(),
-                                            date_val.lower()
-                                        )
-                                        existing_psl_values_by_key[key] = psl_val_str
-                                        logger.info(f"[PSL PROTECTION] Mapped PSL '{psl_val_str}' to key: ({customer_val}, {product_val}, {date_val})")
-                
-                logger.info(f"[PSL PROTECTION] Successfully read {len(existing_psl_values_by_row)} PSL values (by row)")
-                logger.info(f"[PSL PROTECTION] Successfully read {len(existing_psl_values_by_key)} PSL values (by key)")
-                
-                if len(existing_psl_values_by_row) > 0:
-                    sample_rows = list(existing_psl_values_by_row.items())[:5]
-                    logger.info(f"[PSL PROTECTION] Sample PSL values found: {sample_rows}")
-                else:
-                    logger.warning(f"[PSL PROTECTION] No PSL values found in column {psl_col_letter}")
-            else:
-                logger.info("[PSL PROTECTION] Sheet appears empty (no headers found)")
-        except Exception as e:
-            logger.error(f"[PSL PROTECTION] ERROR reading existing PSL: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
-        
-        # Now write headers (after reading existing data)
+        # Write headers (batch operation)
         header_range = f'{chr(64 + start_col)}1'
         sheet.update(header_range, [headers])
         
-        # Get PSL column index in new headers
-        psl_col_idx = headers.index('PSL') if 'PSL' in headers else None
-        
-        if psl_col_idx is not None:
-            try:
-                # Read PSL column directly using range - this ensures we get all rows
-                psl_column_letter = chr(64 + start_col + psl_col_idx)
-                # Read a large range to get all existing PSL values (up to row 1000)
-                psl_range = f'{psl_column_letter}2:{psl_column_letter}1000'
-                psl_values_raw = sheet.get_values(psl_range)  # Use get_values() which returns a list directly
-                
-                logger.info(f"[PSL PROTECTION] Reading PSL column {psl_column_letter} from range {psl_range}")
-                
-                # Also read customer, product, date columns for key-based matching
-                customer_col_idx = headers.index('Customer Name') if 'Customer Name' in headers else None
-                product_col_idx = headers.index('Product Name') if 'Product Name' in headers else None
-                date_col_idx = headers.index('Date') if 'Date' in headers else None
-                
-                if customer_col_idx is not None and product_col_idx is not None and date_col_idx is not None:
-                    customer_col = chr(64 + start_col + customer_col_idx)
-                    product_col = chr(64 + start_col + product_col_idx)
-                    date_col = chr(64 + start_col + date_col_idx)
-                    
-                    customer_values = sheet.get_values(f'{customer_col}2:{customer_col}1000')
-                    product_values = sheet.get_values(f'{product_col}2:{product_col}1000')
-                    date_values = sheet.get_values(f'{date_col}2:{date_col}1000')
-                else:
-                    customer_values = product_values = date_values = []
-                
-                # Process PSL values
-                logger.info(f"[PSL PROTECTION] Raw PSL data type: {type(psl_values_raw)}, length: {len(psl_values_raw) if psl_values_raw else 0}")
-                if psl_values_raw:
-                    logger.info(f"[PSL PROTECTION] First few PSL rows: {psl_values_raw[:5]}")
-                
-                for row_idx, psl_row in enumerate(psl_values_raw, start=2):  # Row 2 is first data row
-                    # Handle different return formats from Google Sheets API
-                    if psl_row:
-                        if isinstance(psl_row, list):
-                            psl_val = psl_row[0] if len(psl_row) > 0 else ''
-                        else:
-                            psl_val = psl_row
-                        
-                        # Check if value exists and is not empty
-                        psl_val_str = str(psl_val).strip() if psl_val else ''
-                        if psl_val_str and psl_val_str != '' and psl_val_str != '0':
-                            existing_psl_values_by_row[row_idx] = psl_val
-                            logger.info(f"[PSL PROTECTION] Found PSL value in row {row_idx}: '{psl_val}' (type: {type(psl_val)})")
-                            
-                            # Create key-based mapping
-                            if (customer_col_idx is not None and product_col_idx is not None and date_col_idx is not None and
-                                row_idx - 2 < len(customer_values) and row_idx - 2 < len(product_values) and row_idx - 2 < len(date_values)):
-                                customer_val = customer_values[row_idx - 2][0] if customer_values[row_idx - 2] and len(customer_values[row_idx - 2]) > 0 else ''
-                                product_val = product_values[row_idx - 2][0] if product_values[row_idx - 2] and len(product_values[row_idx - 2]) > 0 else ''
-                                date_val = date_values[row_idx - 2][0] if date_values[row_idx - 2] and len(date_values[row_idx - 2]) > 0 else ''
-                                
-                                key = (
-                                    str(customer_val).strip().lower(),
-                                    str(product_val).strip().lower(),
-                                    str(date_val).strip().lower()
-                                )
-                                existing_psl_values_by_key[key] = psl_val
-                                logger.info(f"[PSL PROTECTION] Mapped PSL value to key: {key}")
-                
-                logger.info(f"[PSL PROTECTION] Read {len(existing_psl_values_by_row)} existing PSL values (by row)")
-                logger.info(f"[PSL PROTECTION] Read {len(existing_psl_values_by_key)} existing PSL values (by key)")
-            except Exception as e:
-                logger.error(f"[PSL PROTECTION] ERROR reading existing PSL values: {e}")
-                import traceback
-                logger.error(traceback.format_exc())
-        
-        # Prepare order data
+        # Prepare order data - OPTIMIZED: No PSL reading (now in MANUAL_OVERRIDES)
         if not orders_df.empty:
             orders_output = pd.DataFrame()
             
@@ -382,8 +183,7 @@ def update_orders_sheet():
             else:
                 orders_output['Shipping Cost'] = 0
             
-            # Add PSL column (Private Shipping Label) - initialize as empty, will be preserved from existing data
-            # DO NOT set to empty string here - let preservation logic handle it
+            # Add PSL column (empty - values come from MANUAL_OVERRIDES via view)
             if 'PSL' not in orders_output.columns:
                 orders_output['PSL'] = ''
                 
@@ -553,190 +353,43 @@ def update_orders_sheet():
                 if 'PSL' not in orders_output.columns:
                     orders_output['PSL'] = ''
             
-            # Reorder to match headers
-            # Note: PSL values were already read above (before headers were written)
+            # Reorder to match headers (PSL is empty - values come from MANUAL_OVERRIDES via view)
             orders_output = orders_output[headers]
             
-            # CRITICAL: ALWAYS write PSL column position to maintain column alignment
-            # If we can't read existing PSL values, write empty strings - DO NOT overwrite existing
-            # Set PSL to empty in the DataFrame before writing (to maintain column structure)
-            if 'PSL' in orders_output.columns:
-                # Clear PSL values from DataFrame - we'll preserve existing sheet values by NOT updating PSL
-                orders_output['PSL'] = ''
-            
-            # Write all data INCLUDING PSL column (as empty) to maintain column alignment
+            # OPTIMIZED: Write all data in one batch operation
             values = orders_output.fillna('').values.tolist()
-            data_range = f'{chr(64 + start_col)}2'
+            data_range = f'{chr(64 + start_col)}2:{chr(64 + start_col + len(headers) - 1)}{len(values) + 1}'
+            sheet.update(data_range, values, value_input_option='USER_ENTERED')
+            manager._api_call_count['writes'] += 1
+            logger.info(f"✅ Wrote {len(values)} rows to RAW_ORDERS (batch operation)")
             
-            # CRITICAL: Use batch_update to write all columns EXCEPT PSL if we can't read existing PSL values
-            # This preserves PSL values while maintaining correct column alignment
-            if psl_col_idx is not None and (len(existing_psl_values_by_row) == 0 and len(existing_psl_values_by_key) == 0):
-                # Could not read PSL values - write all columns EXCEPT PSL using batch_update
-                logger.warning("="*70)
-                logger.warning("[PSL PROTECTION] CRITICAL: Could not read existing PSL values!")
-                logger.warning("[PSL PROTECTION] Writing data but SKIPPING PSL column (column G) to preserve your manual entries")
-                logger.warning("[PSL PROTECTION] Your PSL values will remain untouched")
-                logger.warning("="*70)
-                
-                # CRITICAL: Write all columns EXCEPT PSL, then restore PSL values afterward
-                # Write columns in two parts: before PSL and after PSL (skip PSL column entirely)
-                if psl_col_idx > 0:
-                    # Write columns A through (PSL-1) - these are before PSL
-                    before_psl_range = f'{chr(64 + start_col)}2:{chr(64 + start_col + psl_col_idx - 1)}{len(values) + 1}'
-                    before_psl_values = [[row[i] for i in range(psl_col_idx)] for row in values]
-                    sheet.update(before_psl_range, before_psl_values, value_input_option='USER_ENTERED')
-                    logger.info(f"[PSL PROTECTION] Wrote columns A-{chr(64 + start_col + psl_col_idx - 1)} (before PSL)")
-                
-                # DO NOT write PSL column (column G) - this preserves existing values
-                logger.info(f"[PSL PROTECTION] SKIPPED column {chr(64 + start_col + psl_col_idx)} (PSL) - will restore values after")
-                
-                if psl_col_idx < len(headers) - 1:
-                    # Write columns (PSL+1) through end - these are after PSL
-                    after_psl_start_col = start_col + psl_col_idx + 1  # Column after PSL
-                    after_psl_end_col = start_col + len(headers) - 1  # Last column
-                    
-                    # Calculate column letters
-                    if after_psl_start_col <= 26:
-                        after_psl_start_letter = chr(64 + after_psl_start_col)
-                    else:
-                        first_letter = chr(64 + ((after_psl_start_col - 1) // 26))
-                        second_letter = chr(64 + ((after_psl_start_col - 1) % 26) + 1)
-                        after_psl_start_letter = first_letter + second_letter
-                    
-                    if after_psl_end_col <= 26:
-                        after_psl_end_letter = chr(64 + after_psl_end_col)
-                    else:
-                        first_letter = chr(64 + ((after_psl_end_col - 1) // 26))
-                        second_letter = chr(64 + ((after_psl_end_col - 1) % 26) + 1)
-                        after_psl_end_letter = first_letter + second_letter
-                    
-                    after_psl_range = f'{after_psl_start_letter}2:{after_psl_end_letter}{len(values) + 1}'
-                    after_psl_values = [[row[i] for i in range(psl_col_idx + 1, len(headers))] for row in values]
-                    sheet.update(after_psl_range, after_psl_values, value_input_option='USER_ENTERED')
-                    logger.info(f"[PSL PROTECTION] Wrote columns {after_psl_start_letter}-{after_psl_end_letter} (after PSL)")
-                
-                # CRITICAL: Restore PSL values that we read earlier
-                if len(existing_psl_values_by_row) > 0:
-                    psl_column_letter = chr(64 + start_col + psl_col_idx)
-                    logger.info(f"[PSL PROTECTION] Restoring {len(existing_psl_values_by_row)} PSL values to column {psl_column_letter}")
-                    
-                    # Restore PSL values using individual cell writes for each preserved value
-                    restored_count = 0
-                    for row_num, psl_value in existing_psl_values_by_row.items():
-                        try:
-                            cell_ref = f'{psl_column_letter}{row_num}'
-                            sheet.update_acell(cell_ref, psl_value)
-                            restored_count += 1
-                        except Exception as restore_err:
-                            logger.warning(f"[PSL PROTECTION] Failed to restore PSL in row {row_num}: {restore_err}")
-                    
-                    logger.info(f"[PSL PROTECTION] Successfully restored {restored_count} PSL values")
-                else:
-                    # Try to restore from backup file if we couldn't read values
-                    backup_file = Path('config/psl_backup.json')
-                    if backup_file.exists():
-                        logger.info(f"[PSL PROTECTION] No PSL values read - attempting restore from backup file...")
-                        try:
-                            import json
-                            with open(backup_file, 'r') as f:
-                                backup_psl_values = json.load(f)
-                            
-                            if backup_psl_values and len(backup_psl_values) > 0:
-                                psl_column_letter = chr(64 + start_col + psl_col_idx)
-                                restored_count = 0
-                                for row_num, psl_value in backup_psl_values.items():
-                                    try:
-                                        cell_ref = f'{psl_column_letter}{int(row_num)}'
-                                        sheet.update_acell(cell_ref, str(psl_value))
-                                        restored_count += 1
-                                        if restored_count <= 3:
-                                            logger.info(f"  [PSL PROTECTION] Restored row {row_num}: {psl_value}")
-                                    except Exception:
-                                        continue
-                                
-                                if restored_count > 0:
-                                    logger.info(f"[PSL PROTECTION] ✓ Restored {restored_count} PSL values from backup!")
-                                else:
-                                    logger.warning("[PSL PROTECTION] Backup file exists but restore failed")
-                            else:
-                                logger.warning("[PSL PROTECTION] Backup file is empty")
-                        except Exception as backup_err:
-                            logger.warning(f"[PSL PROTECTION] Failed to restore from backup: {backup_err}")
-                    else:
-                        logger.warning("[PSL PROTECTION] No PSL values found to restore and no backup file exists")
-            else:
-                # We can read PSL values OR PSL column doesn't exist - write normally
-                sheet.update(data_range, values, value_input_option='USER_ENTERED')
-                
-                # NOW restore PSL values if we found any
-                if psl_col_idx is not None and (len(existing_psl_values_by_row) > 0 or len(existing_psl_values_by_key) > 0):
-                    psl_column_letter = chr(64 + start_col + psl_col_idx)
-                    psl_updates = []
-                    
-                    for row_idx_in_df, (idx, row) in enumerate(orders_output.iterrows(), start=0):
-                        row_num_in_sheet = row_idx_in_df + 2
-                        
-                        # Use preserved values
-                        preserved_psl = row.get('PSL', '') if 'PSL' in orders_output.columns else ''
-                        final_psl = ''
-                        
-                        if preserved_psl and str(preserved_psl).strip() != '' and str(preserved_psl).strip() != '0':
-                            final_psl = preserved_psl
-                        elif row_num_in_sheet in existing_psl_values_by_row:
-                            final_psl = existing_psl_values_by_row[row_num_in_sheet]
-                        else:
-                            key = (
-                                str(row.get('Customer Name', '')).strip().lower(),
-                                str(row.get('Product Name', '')).strip().lower(),
-                                str(row.get('Date', '')).strip().lower()
-                            )
-                            if key in existing_psl_values_by_key:
-                                final_psl = existing_psl_values_by_key[key]
-                        
-                        psl_updates.append([final_psl])
-                    
-                    if len(psl_updates) > 0:
-                        psl_range = f'{psl_column_letter}2:{psl_column_letter}{len(psl_updates) + 1}'
-                        sheet.update(psl_range, psl_updates, value_input_option='USER_ENTERED')
-                        preserved_count = len([u for u in psl_updates if u and u[0] and str(u[0]).strip() != '' and str(u[0]).strip() != '0'])
-                        logger.info(f"[PSL PROTECTION] Restored {preserved_count} PSL values")
+            # OPTIMIZED: Write Profit and Profit Margin formulas in one batch update
+            sold_price_col = chr(64 + start_col + headers.index('Sold Price'))
+            unit_cost_col = chr(64 + start_col + headers.index('Unit Cost'))
+            profit_col = chr(64 + start_col + headers.index('Profit'))
+            profit_margin_col = chr(64 + start_col + headers.index('Profit Margin %'))
             
-            # Now add Profit formulas: (Sold Price - Unit Cost - PSL) + Shipping Cost
-            # Get column letters for formula
-            sold_price_col = chr(64 + start_col + headers.index('Sold Price'))  # Column E (index 4)
-            shipping_cost_col = chr(64 + start_col + headers.index('Shipping Cost'))  # Column F (index 5)
-            psl_col = chr(64 + start_col + headers.index('PSL'))  # Column G (index 6)
-            unit_cost_col = chr(64 + start_col + headers.index('Unit Cost'))  # Column H (index 7)
-            profit_col = chr(64 + start_col + headers.index('Profit'))  # Column I (index 8)
-            
-            # Create Profit formulas for each row
-            profit_formulas = []
-            for row_idx in range(len(orders_output)):
-                row_num = row_idx + 2  # Row 2 is first data row
-                # Formula: (Sold Price - Unit Cost - PSL) + Shipping Cost
-                profit_formula = f'=({sold_price_col}{row_num}-{unit_cost_col}{row_num}-{psl_col}{row_num})+{shipping_cost_col}{row_num}'
-                profit_formulas.append(profit_formula)
-            
-            # Update Profit column with formulas
-            if len(profit_formulas) > 0:
-                profit_range = f'{profit_col}2:{profit_col}{len(profit_formulas) + 1}'
-                profit_values = [[formula] for formula in profit_formulas]
-                sheet.update(profit_range, profit_values, value_input_option='USER_ENTERED')
-            
-            # Update Profit Margin % formulas: (Profit / Sold Price)
-            profit_margin_col = chr(64 + start_col + headers.index('Profit Margin %'))  # Column J (index 9)
-            profit_margin_formulas = []
+            # Build formula updates
+            formula_updates = []
             for row_idx in range(len(orders_output)):
                 row_num = row_idx + 2
-                # Formula: Profit / Sold Price (will be formatted as percentage)
-                profit_margin_formula = f'=IF({sold_price_col}{row_num}<>0, {profit_col}{row_num}/{sold_price_col}{row_num}, 0)'
-                profit_margin_formulas.append(profit_margin_formula)
+                # Profit formula: (Sold Price * Quantity) - (Unit Cost * Quantity) - Shipping Label Cost (from MANUAL_OVERRIDES)
+                # Note: Shipping label cost will be in view sheet via XLOOKUP
+                profit_formula = f'=({sold_price_col}{row_num}*D{row_num})-({unit_cost_col}{row_num}*D{row_num})'
+                profit_margin_formula = f'=IF({sold_price_col}{row_num}*D{row_num}>0, {profit_col}{row_num}/({sold_price_col}{row_num}*D{row_num}), 0)'
+                formula_updates.append({
+                    'range': f'{profit_col}{row_num}',
+                    'values': [[profit_formula]]
+                })
+                formula_updates.append({
+                    'range': f'{profit_margin_col}{row_num}',
+                    'values': [[profit_margin_formula]]
+                })
             
-            # Update Profit Margin % column with formulas
-            if len(profit_margin_formulas) > 0:
-                profit_margin_range = f'{profit_margin_col}2:{profit_margin_col}{len(profit_margin_formulas) + 1}'
-                profit_margin_values = [[formula] for formula in profit_margin_formulas]
-                sheet.update(profit_margin_range, profit_margin_values, value_input_option='USER_ENTERED')
+            # Batch update formulas
+            if formula_updates:
+                manager.batch_update_values("RAW_ORDERS", formula_updates)
+                logger.info(f"✅ Wrote {len(formula_updates)} formulas (batch operation)")
             
         else:
             logger.warning("No order data to write")
@@ -857,48 +510,14 @@ def update_orders_sheet():
         except Exception as e:
             logger.warning(f"Could not add filter: {e}")
         
-        # CRITICAL: Final PSL restore from backup file (runs at the very end, after ALL operations complete)
-        # This ensures PSL values are restored even if they were accidentally cleared during any operation
-        if psl_col_idx is not None:
-            backup_file = Path('config/psl_backup.json')
-            if backup_file.exists():
-                logger.info("="*70)
-                logger.info("[PSL PROTECTION] FINAL RESTORE: Restoring PSL values from backup file...")
-                try:
-                    import json
-                    with open(backup_file, 'r') as f:
-                        backup_psl_values = json.load(f)
-                    
-                    if backup_psl_values and len(backup_psl_values) > 0:
-                        psl_column_letter = chr(64 + start_col + psl_col_idx)
-                        restored_count = 0
-                        
-                        for row_num, psl_value in backup_psl_values.items():
-                            try:
-                                cell_ref = f'{psl_column_letter}{int(row_num)}'
-                                sheet.update_acell(cell_ref, str(psl_value))
-                                restored_count += 1
-                                if restored_count <= 5:
-                                    logger.info(f"  [PSL PROTECTION] ✓ Restored row {row_num}: {psl_value}")
-                            except Exception as restore_err:
-                                logger.warning(f"[PSL PROTECTION] Failed to restore row {row_num}: {restore_err}")
-                        
-                        if restored_count > 0:
-                            logger.info(f"[PSL PROTECTION] ✓✓✓ FINAL RESTORE SUCCESS: Restored {restored_count} PSL values! ✓✓✓")
-                        else:
-                            logger.warning("[PSL PROTECTION] Backup file exists but no values could be restored")
-                    else:
-                        logger.warning("[PSL PROTECTION] Backup file is empty")
-                except Exception as backup_err:
-                    logger.error(f"[PSL PROTECTION] ERROR during final restore: {backup_err}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                logger.info("="*70)
-            else:
-                logger.warning("[PSL PROTECTION] No backup file found")
-                logger.warning("[PSL PROTECTION] TIP: Run 'python src/backup_restore_psl.py backup' before syncing next time")
+        # NOTE: PSL values are now stored in MANUAL_OVERRIDES, not in RAW_ORDERS
+        # No backup/restore needed - values persist in MANUAL_OVERRIDES
         
         logger.info("RAW_ORDERS sheet updated successfully!")
+        
+        # Log API call summary
+        api_summary = manager.get_api_call_summary()
+        logger.info(f"📊 API Call Summary: {api_summary['reads']} reads, {api_summary['writes']} writes, {api_summary['batches']} batches")
         
         # Build view sheets that merge MANUAL_OVERRIDES
         logger.info("Building view sheets (ORDERS, FULFILLMENT)...")

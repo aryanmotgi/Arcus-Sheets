@@ -3,10 +3,13 @@ Google Sheets Manager for creating and formatting comprehensive data sheets
 """
 import gspread
 from google.oauth2.service_account import Credentials
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Tuple
 import pandas as pd
 from pathlib import Path
 import logging
+import time
+import random
+from functools import wraps
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +70,13 @@ class SheetsManager:
         self.client = gspread.authorize(creds)
         self.spreadsheet = self.client.open_by_key(spreadsheet_id)
         self.logger.info(f"Connected to spreadsheet: {self.spreadsheet.title}")
+        
+        # Rate limiting and caching
+        self._sheet_metadata_cache = {}  # {sheet_name: {id, title, grid_properties}}
+        self._headers_cache = {}  # {sheet_name: (headers_list, column_index_map)}
+        self._last_api_call_time = 0
+        self._min_call_interval = 0.15  # 150ms default throttle
+        self._api_call_count = {'reads': 0, 'writes': 0, 'batches': 0}
     
     def get_or_create_spreadsheet(self, title: str = "Arcuswear Store Analytics") -> gspread.Spreadsheet:
         """
@@ -1250,4 +1260,225 @@ class SheetsManager:
                     metrics[key] = value
         
         return metrics
+    
+    # ==================== RATE LIMIT SAFE WRAPPERS ====================
+    
+    def _throttle(self):
+        """Throttle API calls to avoid rate limits"""
+        now = time.time()
+        time_since_last_call = now - self._last_api_call_time
+        if time_since_last_call < self._min_call_interval:
+            sleep_time = self._min_call_interval - time_since_last_call
+            time.sleep(sleep_time)
+        self._last_api_call_time = time.time()
+    
+    def _retry_with_backoff(self, func, max_retries=5, *args, **kwargs):
+        """
+        Retry function with exponential backoff for 429/RESOURCE_EXHAUSTED errors
+        """
+        for attempt in range(max_retries):
+            try:
+                self._throttle()
+                result = func(*args, **kwargs)
+                return result
+            except Exception as e:
+                error_str = str(e).lower()
+                is_rate_limit = (
+                    '429' in error_str or 
+                    'rate_limit' in error_str or 
+                    'resource_exhausted' in error_str or
+                    'quota' in error_str
+                )
+                
+                if is_rate_limit and attempt < max_retries - 1:
+                    # Exponential backoff: 0.5s, 1s, 2s, 4s, 8s + jitter
+                    backoff_time = (0.5 * (2 ** attempt)) + random.uniform(0, 0.1)
+                    self.logger.warning(
+                        f"Rate limit hit (attempt {attempt + 1}/{max_retries}), "
+                        f"retrying in {backoff_time:.2f}s..."
+                    )
+                    time.sleep(backoff_time)
+                    continue
+                else:
+                    # Not a rate limit error, or max retries reached
+                    raise
+    
+    def batch_get_values(self, sheet_name: str, ranges: List[str]) -> Dict[str, List[List]]:
+        """
+        Batch get values for multiple ranges in one API call
+        
+        Args:
+            sheet_name: Name of the sheet
+            ranges: List of A1 notation ranges (e.g., ['A1:B10', 'D1:D20'])
+        
+        Returns:
+            Dict mapping range to values: {'A1:B10': [[...]], 'D1:D20': [[...]]}
+        """
+        try:
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            
+            def _batch_get():
+                result = self.client.batch_get(
+                    self.spreadsheet_id,
+                    ranges=[f"{sheet_name}!{r}" for r in ranges]
+                )
+                self._api_call_count['batches'] += 1
+                return result
+            
+            result = self._retry_with_backoff(_batch_get)
+            
+            # Map results back to original ranges
+            output = {}
+            for i, range_str in enumerate(ranges):
+                if i < len(result):
+                    output[range_str] = result[i]
+                else:
+                    output[range_str] = []
+            
+            return output
+        except Exception as e:
+            self.logger.error(f"Error in batch_get_values: {e}")
+            # Fallback to individual gets
+            output = {}
+            for r in ranges:
+                try:
+                    values = sheet.get_values(r)
+                    output[r] = values if values else []
+                except:
+                    output[r] = []
+            return output
+    
+    def batch_update_values(self, sheet_name: str, updates: List[Dict]) -> bool:
+        """
+        Batch update multiple ranges in one API call
+        
+        Args:
+            sheet_name: Name of the sheet
+            updates: List of dicts with 'range' and 'values' keys
+                    [{'range': 'A1:B10', 'values': [[...]]}, ...]
+        
+        Returns:
+            True if successful
+        """
+        try:
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            
+            # Prepare batch update request
+            data = []
+            for update in updates:
+                range_str = f"{sheet_name}!{update['range']}"
+                data.append({
+                    'range': range_str,
+                    'values': update['values']
+                })
+            
+            def _batch_update():
+                self.client.batch_update(
+                    self.spreadsheet_id,
+                    data,
+                    value_input_option='USER_ENTERED'
+                )
+                self._api_call_count['batches'] += 1
+                self._api_call_count['writes'] += len(updates)
+            
+            self._retry_with_backoff(_batch_update)
+            return True
+        except Exception as e:
+            self.logger.error(f"Error in batch_update_values: {e}")
+            return False
+    
+    def get_sheet_metadata_cached(self, sheet_name: str) -> Dict:
+        """
+        Get sheet metadata (id, title, grid_properties) with caching
+        
+        Cache persists for the duration of the SheetsManager instance
+        """
+        if sheet_name in self._sheet_metadata_cache:
+            return self._sheet_metadata_cache[sheet_name]
+        
+        try:
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            
+            def _get_metadata():
+                # Get sheet properties via batch_get_sheet_metadata
+                metadata = self.spreadsheet.batch_get_sheet_metadata()
+                self._api_call_count['reads'] += 1
+                return metadata
+            
+            metadata_list = self._retry_with_backoff(_get_metadata)
+            
+            # Find our sheet
+            for sheet_meta in metadata_list:
+                if sheet_meta.get('properties', {}).get('title') == sheet_name:
+                    props = sheet_meta.get('properties', {})
+                    cached = {
+                        'id': props.get('sheetId'),
+                        'title': props.get('title'),
+                        'grid_properties': props.get('gridProperties', {})
+                    }
+                    self._sheet_metadata_cache[sheet_name] = cached
+                    return cached
+            
+            # Fallback
+            cached = {
+                'id': sheet.id,
+                'title': sheet_name,
+                'grid_properties': {}
+            }
+            self._sheet_metadata_cache[sheet_name] = cached
+            return cached
+        except Exception as e:
+            self.logger.warning(f"Error getting sheet metadata: {e}, using fallback")
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            cached = {
+                'id': sheet.id,
+                'title': sheet_name,
+                'grid_properties': {}
+            }
+            self._sheet_metadata_cache[sheet_name] = cached
+            return cached
+    
+    def get_headers_cached(self, sheet_name: str) -> Tuple[List[str], Dict[str, int]]:
+        """
+        Get headers and column index mapping with caching
+        
+        Returns:
+            (headers_list, column_index_map) where column_index_map maps header_name -> column_index
+        """
+        if sheet_name in self._headers_cache:
+            return self._headers_cache[sheet_name]
+        
+        try:
+            sheet = self.create_sheet_if_not_exists(sheet_name)
+            
+            def _get_headers():
+                values = sheet.get_values('1:1')  # Get first row only
+                self._api_call_count['reads'] += 1
+                return values[0] if values else []
+            
+            headers = self._retry_with_backoff(_get_headers)
+            
+            # Build column index map
+            column_map = {header: idx for idx, header in enumerate(headers) if header}
+            
+            result = (headers, column_map)
+            self._headers_cache[sheet_name] = result
+            return result
+        except Exception as e:
+            self.logger.warning(f"Error getting headers: {e}")
+            return ([], {})
+    
+    def clear_cache(self):
+        """Clear all caches (useful after major sheet changes)"""
+        self._sheet_metadata_cache.clear()
+        self._headers_cache.clear()
+        self.logger.info("Cleared sheet metadata and headers cache")
+    
+    def get_api_call_summary(self) -> Dict[str, int]:
+        """Get summary of API calls made"""
+        return self._api_call_count.copy()
+    
+    def reset_api_call_count(self):
+        """Reset API call counter"""
+        self._api_call_count = {'reads': 0, 'writes': 0, 'batches': 0}
 
