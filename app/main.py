@@ -39,7 +39,16 @@ app.include_router(ai_agent.router, prefix="/api/agent", tags=["ai-agent"])
 
 @app.get("/")
 async def root():
-    return {"message": "Arcus Analytics & Task Management API"}
+    """Root endpoint - basic API info"""
+    return {
+        "message": "Arcus Analytics & Task Management API",
+        "status": "running",
+        "endpoints": {
+            "health": "/api/health",
+            "agent_command": "/api/agent/command",
+            "capabilities": "/api/agent/capabilities"
+        }
+    }
 
 
 @app.get("/api/health")
@@ -56,17 +65,4 @@ async def health_check():
 async def simple_health():
     """Simple health check (alternative endpoint)"""
     return {"status": "ok"}
-
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "Arcus Analytics & Task Management API",
-        "status": "running",
-        "endpoints": {
-            "health": "/api/health",
-            "agent_command": "/api/agent/command",
-            "capabilities": "/api/agent/capabilities"
-        }
-    }
 
