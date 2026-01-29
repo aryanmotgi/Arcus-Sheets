@@ -16,32 +16,78 @@ logger = logging.getLogger(__name__)
 # CONFIGURATION
 # ============================================
 
-# New Headers (A:L)
+# New Headers (A:S) - 19 columns
 ORDERS_HEADERS = [
-    'Customer Name',      # A
-    'Product',            # B
-    'Size',               # C
-    'Qty',                # D
-    'Price',              # E
-    'Revenue',            # F (formula)
-    'Unit Cost',          # G
-    'Shipping Label Cost',# H (user input)
-    'Profit',             # I (formula)
-    'Profit Margin %',    # J (formula)
-    'Shopify Payout',     # K
-    'Fulfillment Status'  # L
+    'Order #',            # A (Hidden ID helper)
+    'Customer Name',      # B
+    'Product',            # C
+    'Size',               # D
+    'Qty',                # E
+    
+    # Price Block
+    'Shopify Price',      # F (Read-only)
+    'Override Price',     # G (User)
+    'Effective Price',    # H (Formula)
+    
+    'Revenue',            # I (Formula)
+    
+    # Shipping Charge Block
+    'Shopify Ship Charge',# J (Read-only)
+    'Override Ship Charge',# K (User)
+    'Effective Ship Charge',# L (Formula)
+    
+    'Unit Cost',          # M
+    
+    # Label Cost Block
+    'Auto Label Cost',    # N (Read-only/Placeholder)
+    'Override Label Cost',# O (User)
+    'Effective Label Cost',# P (Formula)
+    
+    # Financials
+    'Total Collected',    # Q (Formula: Rev + EffShip)
+    'Total Costs',        # R (Formula: COGS + EffLabel)
+    'Profit',             # S (Formula)
+    'Profit Margin %',    # T (Formula) wait, let's recount.
+    
+    # Let's map indices carefully.
+    # 0: Order # (hidden tracking)
+    # 1: Customer
+    # 2: Product
+    # 3: Size
+    # 4: Qty
+    # 5: Shop Price
+    # 6: Over Price
+    # 7: Eff Price
+    # 8: Revenue
+    # 9: Shop Ship
+    # 10: Over Ship
+    # 11: Eff Ship
+    # 12: Unit Cost
+    # 13: Auto Label
+    # 14: Over Label
+    # 15: Eff Label
+    # 16: Total Collected
+    # 17: Total Costs
+    # 18: Profit
+    # 19: Margin
+    
+    # Wait, user asked for:
+    # "Shopify Payout" and "Fulfillment Status"?
+    # Ah, I missed those in my previous mental list. Let me check requirements.
+    # "Customer, Product, Size, Qty, Price..., Revenue..., Shipping..., Unit Cost, Label..., Profit, Margin, Payout, Fulfillment"
+    # I should add Payout and Fulfillment at the end.
+    
+    'Shopify Payout',     # U
+    'Fulfillment Status'  # V
 ]
 
-# Default unit cost
+# Recount: 22 Columns (A-V)
+# Indices 0-21
+
 DEFAULT_UNIT_COST = 12.26
-
-# Number of rows to fill formulas
 FORMULA_ROWS = 2000
-
-# Valid Options
 VALID_PRODUCTS = ["Arcus Tee", "All Paths Tee"]
 VALID_SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
-
 
 class SimpleOrdersSync:
     """Simple sync agent that only works with ORDERS tab"""
@@ -65,9 +111,7 @@ class SimpleOrdersSync:
             sheet.update('A1', [ORDERS_HEADERS], value_input_option='USER_ENTERED')
             
             # Apply all formatting and validation
-            self._apply_header_formatting(sheet)
-            self._apply_column_formatting(sheet)
-            self._apply_conditional_formatting(sheet)
+            self._apply_visuals(sheet) # Combined formatting
             self._apply_data_validation(sheet)
             self._fill_formulas(sheet)
             self._freeze_and_filter(sheet)
@@ -77,10 +121,9 @@ class SimpleOrdersSync:
             return {
                 'success': True,
                 'message': '✅ **ORDERS tab initialized!**\n\n'
-                          f'📊 Headers: {len(ORDERS_HEADERS)} columns (A:L)\n'
-                          '📐 Formulas: Revenue, Profit, Margin filled\n'
-                          '🎨 Formatting: New Arcus theme applied\n'
-                          '🛡️ Validation: Dropdowns added for Product & Size'
+                          f'📊 Columns: {len(ORDERS_HEADERS)} (A:V)\n'
+                          '🛡️ Features: Persistent Overrides, Sync Protection\n'
+                          '🎨 Formatting: Gray (Read-only), Yellow (Input)'
             }
             
         except Exception as e:
@@ -88,23 +131,52 @@ class SimpleOrdersSync:
             return {'success': False, 'message': f'❌ Failed to initialize ORDERS: {str(e)}'}
     
     def sync_orders(self) -> Dict[str, Any]:
-        """Fetch Shopify orders and write to ORDERS tab"""
+        """Fetch Shopify orders and write to ORDERS tab (Preserving Overrides)"""
         self.logger.info("=== SYNC ORDERS ===")
         
         try:
             sheet = self.sheets_manager.create_sheet_if_not_exists("ORDERS")
             
-            # Check headers
-            existing_data = sheet.get_all_values()
-            if not existing_data or existing_data[0] != ORDERS_HEADERS:
-                self.logger.info("Headers mismatch, running init first...")
+            # 1. READ EXISTING DATA (To preserve overrides)
+            existing_values = sheet.get_all_values()
+            
+            # If empty or wrong headers, re-init
+            if not existing_values or existing_values[0] != ORDERS_HEADERS:
+                self.logger.info("Headers mismatch/new sheet, running init...")
                 self.init_orders_apply()
+                existing_values = [ORDERS_HEADERS] # Reset
                 sheet = self.sheets_manager.spreadsheet.worksheet("ORDERS")
             
-            # Fetch orders
+            # Build Overrides Map
+            # Key: Order# + Product + Size (Composite Key to handle multi-line items)
+            # Actually, Order# + LineItemIndex is safest, but we don't store index.
+            # Order# + Product + Size + Variant is usually unique enough.
+            # We will use: f"{Order#}|{Product}|{Size}"
+            overrides_map = {} 
+            
+            if len(existing_values) > 1:
+                # Indices for Overrides: 
+                # Override Price (G) -> 6
+                # Override Ship (K) -> 10
+                # Override Label (O) -> 14
+                
+                for row in existing_values[1:]: # Skip header
+                    if len(row) < 15: continue
+                    order_num = row[0] # A
+                    prod = row[2]      # C
+                    size = row[3]      # D
+                    
+                    key = f"{order_num}|{prod}|{size}"
+                    overrides_map[key] = {
+                        'price': row[6],
+                        'ship': row[10],
+                        'label': row[14]
+                    }
+            
+            # 2. FETCH SHOPIFY DATA
             orders = self.shopify_client.get_orders(limit=250, status='any')
             if not orders:
-                return {'success': True, 'message': '⚠️ No orders found in Shopify.'}
+                return {'success': True, 'message': '⚠️ No orders found.'}
             
             unit_cost = self.config.get('profit', {}).get('cost_per_shirt', DEFAULT_UNIT_COST)
             
@@ -115,47 +187,82 @@ class SimpleOrdersSync:
             for order in orders:
                 try:
                     orders_count += 1
-                    order_number = order.get('order_number', '')
+                    order_number = str(order.get('order_number', ''))
                     
                     # Customer
                     customer = order.get('customer', {}) or {}
                     customer_name = f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip() or 'Guest'
                     
-                    # Totals & Status
+                    # Status & Pricing
                     fulfillment_status = (order.get('fulfillment_status') or 'unfulfilled').capitalize()
-                    total_price = order.get('total_price', '')
+                    total_price = order.get('total_price', '') # Payout (not per item)
+                    
+                    # Shipping Charge (Shopify) - usually order level, needs allocation? 
+                    # User asked for "Shopify Shipping Charge". 
+                    # We'll put total shipping on the FIRST line item, 0 on others (similar to payout)
+                    shipping_lines = order.get('shipping_lines', [])
+                    shipping_charge = 0.0
+                    for sl in shipping_lines:
+                        try:
+                            shipping_charge += float(sl.get('price', 0))
+                        except: pass
                     
                     line_items = order.get('line_items', [])
                     if not line_items:
                         skipped_orders += 1
                         continue
                     
-                    # One row per line item
                     for i, item in enumerate(line_items):
                         raw_title = item.get('title', '')
                         raw_variant = item.get('variant_title', '') or ''
-                        quantity = int(item.get('quantity', 1))
+                        qty = int(item.get('quantity', 1))
                         price = float(item.get('price', 0))
                         
-                        # Normalization Logic
-                        product_title, size = self._normalize_product_and_size(raw_title, raw_variant)
+                        # Normalization
+                        product_title, title_size = self._normalize_product_and_size(raw_title, raw_variant)
                         
-                        # Only show total payout on the first line item of the order
+                        # Allocation of Order-Level fields to First Row
                         payout_display = total_price if i == 0 else ''
+                        ship_display = shipping_charge if i == 0 else 0.0
+                        
+                        # CHECK FOR OVERRIDES
+                        key = f"{order_number}|{product_title}|{title_size}"
+                        saved = overrides_map.get(key, {})
+                        
+                        override_price = saved.get('price', '')
+                        override_ship = saved.get('ship', '')
+                        override_label = saved.get('label', '')
                         
                         row = [
-                            customer_name,      # A: Customer Name
-                            product_title,      # B: Product
-                            size,               # C: Size
-                            quantity,           # D: Qty
-                            price,              # E: Price
-                            '',                 # F: Revenue (formula)
-                            unit_cost,          # G: Unit Cost
-                            '',                 # H: Shipping Label Cost (user)
-                            '',                 # I: Profit (formula)
-                            '',                 # J: Margin (formula)
-                            payout_display,     # K: Shopify Payout
-                            fulfillment_status  # L: Fulfillment Status
+                            order_number,       # A (0)
+                            customer_name,      # B (1)
+                            product_title,      # C (2)
+                            title_size,         # D (3)
+                            qty,                # E (4)
+                            
+                            price,              # F (5) Shop Price
+                            override_price,     # G (6) User Price
+                            '',                 # H (7) Eff Price (Formula)
+                            
+                            '',                 # I (8) Revenue (Formula)
+                            
+                            ship_display,       # J (9) Shop Ship
+                            override_ship,      # K (10) User Ship
+                            '',                 # L (11) Eff Ship (Formula)
+                            
+                            unit_cost,          # M (12) Unit Cost
+                            
+                            '',                 # N (13) Auto Label (Blank for now)
+                            override_label,     # O (14) User Label
+                            '',                 # P (15) Eff Label (Formula)
+                            
+                            '',                 # Q (16) Tot Collected (Formula)
+                            '',                 # R (17) Tot Costs (Formula)
+                            '',                 # S (18) Profit (Formula)
+                            '',                 # T (19) Margin (Formula)
+                            
+                            payout_display,     # U (20) Payout
+                            fulfillment_status  # V (21) Status
                         ]
                         rows.append(row)
                         
@@ -163,30 +270,22 @@ class SimpleOrdersSync:
                     self.logger.warning(f"Error processing order: {e}")
                     skipped_orders += 1
             
-            if not rows:
-                return {'success': True, 'message': '⚠️ No line items processed.'}
+            # 3. WRITE BACK
+            # Clear & Update
+            if len(sheet.get_all_values()) > 1:
+                sheet.batch_clear([f'A2:V{len(sheet.get_all_values())}'])
             
-            # Clear existing data (rows 2+)
-            try:
-                num_existing_rows = len(sheet.get_all_values())
-                if num_existing_rows > 1:
-                    sheet.batch_clear([f'A2:L{num_existing_rows}'])
-            except:
-                pass
-            
-            # Write new data
-            sheet.update(f'A2:L{len(rows) + 1}', rows, value_input_option='USER_ENTERED')
-            
-            # Re-apply formulas
+            if rows:
+                sheet.update(f'A2:V{len(rows) + 1}', rows, value_input_option='USER_ENTERED')
+                
+            # 4. RE-APPLY FORMULAS
             self._fill_formulas_for_rows(sheet, len(rows))
             
             return {
                 'success': True,
-                'message': f'✅ **Sync Complete!**\n\n'
-                          f'📦 Orders Processed: {orders_count}\n'
-                          f'📝 Rows Written: {len(rows)}\n'
-                          f'⚡ formatting & validation applied automatically.',
-                'data': {'orders': orders_count, 'rows': len(rows)}
+                'message': f'✅ **Sync Complete (v3 Preserved Overrides)**\n'
+                          f'📦 Orders: {orders_count}\n'
+                          f'📝 Rows: {len(rows)}'
             }
             
         except Exception as e:
@@ -194,19 +293,12 @@ class SimpleOrdersSync:
             return {'success': False, 'message': f'❌ Failed to sync: {str(e)}'}
 
     def _normalize_product_and_size(self, title: str, variant: str):
-        """Normalize product name and size based on rigorous logic"""
         combined_text = (title + " " + variant).lower()
-        
-        # 1. Normalize Product Name
-        clean_product = title # Default to original if no match
-        if "arcus" in combined_text:
-            clean_product = "Arcus Tee"
-        elif "all paths" in combined_text:
-            clean_product = "All Paths Tee"
+        clean_product = title 
+        if "arcus" in combined_text: clean_product = "Arcus Tee"
+        elif "all paths" in combined_text: clean_product = "All Paths Tee"
             
-        # 2. Normalize Size
         clean_size = ""
-        # Check standard codes first
         if "xxl" in combined_text: clean_size = "XXL"
         elif "xl" in combined_text or "extra large" in combined_text: clean_size = "XL"
         elif "large" in combined_text or " lg " in combined_text or combined_text.endswith(" lg"): clean_size = "L"
@@ -214,372 +306,158 @@ class SimpleOrdersSync:
         elif "small" in combined_text or " sm " in combined_text or combined_text.endswith(" sm"): clean_size = "S"
         elif "xs" in combined_text or "extra small" in combined_text: clean_size = "XS"
         
-        # Fallback: if variant is exactly a valid code
-        if not clean_size and variant.upper() in VALID_SIZES:
-            clean_size = variant.upper()
-            
-        # Fallback: single letter checks (risky, so only check variant)
+        if not clean_size and variant.upper() in VALID_SIZES: clean_size = variant.upper()
         if not clean_size:
             v_upper = variant.upper().strip()
-            if v_upper in ["S", "M", "L", "XL"]:
-                clean_size = v_upper
+            if v_upper in ["S", "M", "L", "XL"]: clean_size = v_upper
 
         return clean_product, clean_size
 
     # ============================================
-    # FORMATTING & VALIDATION HELPERS
+    # VISUALS & FORMULAS
     # ============================================
     
-    def _apply_data_validation(self, sheet):
-        """Apply dropdown validation to Product and Size columns"""
+    def _apply_visuals(self, sheet):
         requests = []
         
-        # Product Dropdown (Col B)
+        # Header Formatting
         requests.append({
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet.id,
-                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
-                    "startColumnIndex": 1, "endColumnIndex": 2
-                },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": [{"userEnteredValue": v} for v in VALID_PRODUCTS]
-                    },
-                    "showCustomUi": True,
-                    "strict": False # Allow other values but show warning
-                }
+            "repeatCell": {
+                "range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)},
+                "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.2, "green": 0.2, "blue": 0.2}, "textFormat": {"foregroundColor": {"red": 1, "green": 1, "blue": 1}, "bold": True, "fontSize": 10}, "horizontalAlignment": "CENTER", "verticalAlignment": "MIDDLE"}},
+                "fields": "userEnteredFormat"
             }
         })
         
-        # Size Dropdown (Col C)
-        requests.append({
-            "setDataValidation": {
-                "range": {
-                    "sheetId": sheet.id,
-                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
-                    "startColumnIndex": 2, "endColumnIndex": 3
-                },
-                "rule": {
-                    "condition": {
-                        "type": "ONE_OF_LIST",
-                        "values": [{"userEnteredValue": v} for v in VALID_SIZES]
-                    },
-                    "showCustomUi": True,
-                    "strict": False
-                }
-            }
-        })
+        # Columns Coloring
+        # Read Only (Gray): F(5), J(9), N(13)
+        # Input (Yellow): G(6), K(10), O(14)
+        # Effective (White/Bold): H(7), L(11), P(15)
         
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
-    
-    def _apply_header_formatting(self, sheet):
-        """Bold, centered, gray bg, borders"""
-        requests = [{
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet.id,
-                    "startRowIndex": 0, "endRowIndex": 1,
-                    "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "backgroundColor": {"red": 0.88, "green": 0.88, "blue": 0.88},
-                        "textFormat": {"bold": True, "fontSize": 11},
-                        "horizontalAlignment": "CENTER",
-                        "verticalAlignment": "MIDDLE",
-                        "borders": {
-                            "top": {"style": "SOLID", "width": 1, "color": {"red": 0, "green": 0, "blue": 0}},
-                            "bottom": {"style": "SOLID", "width": 1, "color": {"red": 0, "green": 0, "blue": 0}},
-                            "left": {"style": "SOLID", "width": 1, "color": {"red": 0, "green": 0, "blue": 0}},
-                            "right": {"style": "SOLID", "width": 1, "color": {"red": 0, "green": 0, "blue": 0}}
-                        }
-                    }
-                },
-                "fields": "userEnteredFormat(backgroundColor,textFormat,horizontalAlignment,verticalAlignment,borders)"
-            }
-        }]
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
-    
-    def _apply_column_formatting(self, sheet):
-        """Currency, Dates, Borders"""
-        requests = []
+        # Read Only
+        for c in [5, 9, 13]:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": c, "endColumnIndex": c+1}, "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}}, "fields": "userEnteredFormat.backgroundColor"}})
+            
+        # Inputs
+        for c in [6, 10, 14]:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": c, "endColumnIndex": c+1}, "cell": {"userEnteredFormat": {"backgroundColor": {"red": 1.0, "green": 0.98, "blue": 0.85}}}, "fields": "userEnteredFormat.backgroundColor"}})
         
-        # Apply borders to ALL data cells
+        # Borders (All)
         requests.append({
             "repeatCell": {
-                "range": {
-                    "sheetId": sheet.id,
-                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
-                    "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "borders": {
-                            "top": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}},
-                            "bottom": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}},
-                            "left": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}},
-                            "right": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}
-                        },
-                        "horizontalAlignment": "CENTER"
-                    }
-                },
+                "range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)},
+                "cell": {"userEnteredFormat": {"borders": {"top": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}, "bottom": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}, "left": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}, "right": {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}}, "horizontalAlignment": "CENTER"}},
                 "fields": "userEnteredFormat(borders,horizontalAlignment)"
             }
         })
         
-        # Currency columns: Price(E), Revenue(F), Cost(G), Ship(H), Profit(I), Payout(K)
-        # 0-based: 4, 5, 6, 7, 8, 10
-        for col in [4, 5, 6, 7, 8, 10]:
-            requests.append({
-                "repeatCell": {
-                    "range": {
-                        "sheetId": sheet.id,
-                        "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
-                        "startColumnIndex": col, "endColumnIndex": col + 1
-                    },
-                    "cell": {"userEnteredFormat": {"numberFormat": {"type": "CURRENCY", "pattern": "$#,##0.00"}}},
-                    "fields": "userEnteredFormat.numberFormat"
-                }
-            })
-            
-        # Percentage: J (9)
-        requests.append({
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet.id,
-                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
-                    "startColumnIndex": 9, "endColumnIndex": 10
-                },
-                "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}},
-                "fields": "userEnteredFormat.numberFormat"
-            }
-        })
+        # Conditionals (Profit, Status, Arcus, Label)
+        # Profit (Col S, Index 18) > 0 Green, < 0 Red
+        # Label Missing (Col O, Index 14) Blank Yellow -- Actually check Effective Label (Col P, Index 15)?? 
+        # User said "Shipping label cost blank (Effective Label Cost blank) yellow" -> P
         
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
-    
-    def _apply_conditional_formatting(self, sheet):
-        requests = []
+        ranges_prof = [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 18, "endColumnIndex": 19}]
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_prof, "booleanRule": {"condition": {"type": "NUMBER_GREATER", "values": [{"userEnteredValue": "0"}]}, "format": {"backgroundColor": {"red": 0.85, "green": 0.95, "blue": 0.85}, "textFormat": {"foregroundColor": {"red": 0, "green": 0.4, "blue": 0}}}}}, "index": 0}})
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_prof, "booleanRule": {"condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0"}]}, "format": {"backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.9}, "textFormat": {"foregroundColor": {"red": 0.8, "green": 0, "blue": 0}}}}}, "index": 1}})
         
-        # 1. Product = "Arcus Tee" -> Light Gray
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": 12}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "Arcus Tee"}]},
-                        "format": {"backgroundColor": {"red": 0.95, "green": 0.95, "blue": 0.95}}
-                    }
-                }, "index": 0
-            }
-        })
+        # Effective Label Blank -> Yellow (P, Index 15)
+        ranges_lbl = [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 15, "endColumnIndex": 16}]
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_lbl, "booleanRule": {"condition": {"type": "BLANK"}, "format": {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}}}}, "index": 2}})
         
-        # 2. Product = "All Paths Tee" -> Light Purple
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": 12}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "All Paths Tee"}]},
-                        "format": {"backgroundColor": {"red": 0.95, "green": 0.9, "blue": 1.0}} # Light purple
-                    }
-                }, "index": 1
-            }
-        })
+        # Fulfillment (Col V, Index 21)
+        ranges_stat = [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 21, "endColumnIndex": 22}]
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_stat, "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Fulfilled"}]}, "format": {"backgroundColor": {"red": 0.8, "green": 1.0, "blue": 0.8}}}}, "index": 3}})
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_stat, "booleanRule": {"condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Unfulfilled"}]}, "format": {"backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.8}}}}, "index": 4}})
         
-        # 3. Profit > 0 -> Green (Col I, index 8)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 8, "endColumnIndex": 9}],
-                    "booleanRule": {
-                        "condition": {"type": "NUMBER_GREATER", "values": [{"userEnteredValue": "0"}]},
-                        "format": {
-                            "backgroundColor": {"red": 0.85, "green": 0.95, "blue": 0.85},
-                            "textFormat": {"foregroundColor": {"red": 0, "green": 0.4, "blue": 0}}
-                        }
-                    }
-                }, "index": 2
-            }
-        })
+        # Product Rows (Arcus/AllPaths) - Affects whole row (0-22)
+        ranges_all = [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": 22}]
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_all, "booleanRule": {"condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "Arcus Tee"}]}, "format": {"backgroundColor": {"red": 0.96, "green": 0.96, "blue": 0.96}}}}, "index": 5}})
+        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges_all, "booleanRule": {"condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "All Paths Tee"}]}, "format": {"backgroundColor": {"red": 0.96, "green": 0.94, "blue": 1.0}}}}, "index": 6}})
         
-        # 4. Profit < 0 -> Red (Col I, index 8)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 8, "endColumnIndex": 9}],
-                    "booleanRule": {
-                        "condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0"}]},
-                        "format": {
-                            "backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.9},
-                            "textFormat": {"foregroundColor": {"red": 0.8, "green": 0, "blue": 0}}
-                        }
-                    }
-                }, "index": 3
-            }
-        })
+        # Currency Format
+        # F-H (5-7), I(8), J-L(9-11), M-P(12-15), Q-S(16-18), U(20)
+        curr_cols = [5,6,7, 8, 9,10,11, 12,13,14,15, 16,17,18, 20]
+        for c in curr_cols:
+             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": c, "endColumnIndex": c+1}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "CURRENCY", "pattern": "$#,##0.00"}}}, "fields": "userEnteredFormat.numberFormat"}})
+
+        # Percent Format T(19)
+        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 19, "endColumnIndex": 20}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
+
+        sheet.spreadsheet.batch_update({"requests": requests})
         
-        # 5. Fulfillment = "Fulfilled" -> Green (Col L, index 11)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 11, "endColumnIndex": 12}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Fulfilled"}]},
-                        "format": {"backgroundColor": {"red": 0.8, "green": 1.0, "blue": 0.8}}
-                    }
-                }, "index": 4
-            }
-        })
-        
-        # 6. Fulfillment = "Unfulfilled" -> Orange (Col L, index 11)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 11, "endColumnIndex": 12}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_EQ", "values": [{"userEnteredValue": "Unfulfilled"}]},
-                        "format": {"backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.8}}
-                    }
-                }, "index": 5
-            }
-        })
-        
-        # 7. S Size -> Light Blue (Col C, index 2)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "S"}]},
-                        "format": {"backgroundColor": {"red": 0.85, "green": 0.92, "blue": 1.0}}
-                    }
-                }, "index": 6
-            }
-        })
-        
-        # 8. M Size -> Light Green (Col C, index 2)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "M"}]},
-                        "format": {"backgroundColor": {"red": 0.85, "green": 1.0, "blue": 0.85}}
-                    }
-                }, "index": 7
-            }
-        })
-        
-        # 9. L Size -> Light Yellow (Col C, index 2)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "L"}]},
-                        "format": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 0.8}}
-                    }
-                }, "index": 8
-            }
-        })
-        
-        # 10. XL Size -> Light Orange (Col C, index 2)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
-                    "booleanRule": {
-                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "XL"}]},
-                        "format": {"backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.8}}
-                    }
-                }, "index": 9
-            }
-        })
-        
-        # 11. Blank Shipping Cost Check -> Yellow (Col H, index 7)
-        requests.append({
-            "addConditionalFormatRule": {
-                "rule": {
-                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 7, "endColumnIndex": 8}],
-                    "booleanRule": {
-                        "condition": {"type": "BLANK"},
-                        "format": {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}}
-                    }
-                }, "index": 10
-            }
-        })
-        
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
-    
     def _fill_formulas(self, sheet):
-        """Fill formulas for Revenue, Profit, Margin"""
-        # Rev = Qty(D)*Price(E) -> F
-        # Profit = Rev(F) - (UnitCost(G)*Qty(D)) - ShipLabel(H) -> I
-        # Margin = Profit(I) / Rev(F) -> J
+        self._fill_formulas_for_rows(sheet, FORMULA_ROWS)
         
-        formulas_rev = []
-        formulas_prof = []
-        formulas_marg = []
-        
-        for r in range(2, FORMULA_ROWS + 2):
-            formulas_rev.append([f'=IFERROR(D{r}*E{r},"")'])
-            # Profit = Revenue - Total COGS (UnitCost*Qty) - Shipping
-            formulas_prof.append([f'=IFERROR(F{r}-(G{r}*D{r})-H{r},"")'])
-            formulas_marg.append([f'=IFERROR(I{r}/F{r},"")'])
-        
-        sheet.update(f'F2:F{FORMULA_ROWS+1}', formulas_rev, value_input_option='USER_ENTERED')
-        sheet.update(f'I2:I{FORMULA_ROWS+1}', formulas_prof, value_input_option='USER_ENTERED')
-        sheet.update(f'J2:J{FORMULA_ROWS+1}', formulas_marg, value_input_option='USER_ENTERED')
-    
     def _fill_formulas_for_rows(self, sheet, num_rows):
-        """Fill formulas for partial rows (optimization)"""
         if num_rows == 0: return
+        # Eff Price (H) = IF(G, G, F)
+        # Revenue (I) = E*H
+        # Eff Ship (L) = IF(K, K, J)
+        # Eff Label (P) = IF(O, O, N)
+        # Total Collected (Q) = I + L
+        # Total Costs (R) = (M*E) + P
+        # Profit (S) = Q - R
+        # Margin (T) = S / Q
         
-        formulas_rev = []
-        formulas_prof = []
-        formulas_marg = []
+        f_eff_price = []
+        f_revenue = []
+        f_eff_ship = []
+        f_eff_label = []
+        f_coll = []
+        f_cost = []
+        f_prof = []
+        f_marg = []
         
         for r in range(2, num_rows + 2):
-            formulas_rev.append([f'=IFERROR(D{r}*E{r},"")'])
-            formulas_prof.append([f'=IFERROR(F{r}-(G{r}*D{r})-H{r},"")'])
-            formulas_marg.append([f'=IFERROR(I{r}/F{r},"")'])
+            f_eff_price.append([f'=IF(G{r}<>"", G{r}, F{r})'])
+            f_revenue.append([f'=IFERROR(E{r}*H{r}, "")'])
+            f_eff_ship.append([f'=IF(K{r}<>"", K{r}, J{r})'])
+            f_eff_label.append([f'=IF(O{r}<>"", O{r}, N{r})'])
+            f_coll.append([f'=IFERROR(I{r}+L{r}, "")'])
+            f_cost.append([f'=IFERROR((M{r}*E{r})+P{r}, "")'])
+            f_prof.append([f'=IFERROR(Q{r}-R{r}, "")'])
+            f_marg.append([f'=IFERROR(S{r}/Q{r}, "")'])
             
-        sheet.update(f'F2:F{num_rows+1}', formulas_rev, value_input_option='USER_ENTERED')
-        sheet.update(f'I2:I{num_rows+1}', formulas_prof, value_input_option='USER_ENTERED')
-        sheet.update(f'J2:J{num_rows+1}', formulas_marg, value_input_option='USER_ENTERED')
+        sheet.update(f'H2:H{num_rows+1}', f_eff_price, value_input_option='USER_ENTERED')
+        sheet.update(f'I2:I{num_rows+1}', f_revenue, value_input_option='USER_ENTERED')
+        sheet.update(f'L2:L{num_rows+1}', f_eff_ship, value_input_option='USER_ENTERED')
+        sheet.update(f'P2:P{num_rows+1}', f_eff_label, value_input_option='USER_ENTERED')
+        sheet.update(f'Q2:Q{num_rows+1}', f_coll, value_input_option='USER_ENTERED')
+        sheet.update(f'R2:R{num_rows+1}', f_cost, value_input_option='USER_ENTERED')
+        sheet.update(f'S2:S{num_rows+1}', f_prof, value_input_option='USER_ENTERED')
+        sheet.update(f'T2:T{num_rows+1}', f_marg, value_input_option='USER_ENTERED')
+
+    def _apply_data_validation(self, sheet):
+        requests = []
+        # Product (Col C, Index 2)
+        requests.append({"setDataValidation": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}, "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in VALID_PRODUCTS]}, "showCustomUi": True}}})
+        # Size (Col D, Index 3)
+        requests.append({"setDataValidation": {"range": {"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 3, "endColumnIndex": 4}, "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": v} for v in VALID_SIZES]}, "showCustomUi": True}}})
+        sheet.spreadsheet.batch_update({"requests": requests})
 
     def _freeze_and_filter(self, sheet):
-        requests = [
-            {"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}},
-            {"setBasicFilter": {"filter": {"range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)}}}}
-        ]
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
+        requests = [{"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"frozenRowCount": 1}}, "fields": "gridProperties.frozenRowCount"}}, {"setBasicFilter": {"filter": {"range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 0, "endColumnIndex": len(ORDERS_HEADERS)}}}}]
+        sheet.spreadsheet.batch_update({"requests": requests})
     
     def _set_column_widths(self, sheet):
-        # A:Name(150), B:Prod(200), C:Size(80), D:Qty(50), E:Price(80), F:Rev(80), G:Cost(80), H:Ship(100), I:Prof(80), J:Marg(80), K:Pay(100), L:Stat(100)
-        widths = [150, 200, 80, 50, 80, 80, 80, 100, 80, 80, 100, 100]
+        # 0(Order#) Hidden? No, keep small. 
+        # A(0)=50, B(1)=150, C(2)=150, D(3)=60, E(4)=40
+        # F-H(5-7)=80, I(8)=80, J-L(9-11)=80, M(12)=70, N-P(13-15)=80
+        # Q-S(16-18)=80, T(19)=60, U(20)=80, V(21)=100
+        widths = [50, 150, 150, 60, 40] + [80]*3 + [80] + [80]*3 + [70] + [80]*3 + [80]*3 + [60, 80, 100]
         requests = []
         for i, w in enumerate(widths):
             requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i+1}, "properties": {"pixelSize": w}, "fields": "pixelSize"}})
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
+        sheet.spreadsheet.batch_update({"requests": requests})
     
     def _hide_gridlines(self, sheet):
-        requests = [{"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"hideGridlines": True}}, "fields": "gridProperties.hideGridlines"}}]
-        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
+        sheet.spreadsheet.batch_update({"requests": [{"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"hideGridlines": True}}, "fields": "gridProperties.hideGridlines"}}]})
 
-# ============================================
-# STANDALONE FUNCTIONS (for direct import)
-# ============================================
-
+# STANDALONE
 def init_orders_apply(sheets_manager, shopify_client=None, config=None) -> Dict[str, Any]:
-    """Standalone function to initialize ORDERS tab"""
     agent = SimpleOrdersSync(sheets_manager, shopify_client, config)
     return agent.init_orders_apply()
 
-
 def sync_orders(sheets_manager, shopify_client, config=None) -> Dict[str, Any]:
-    """Standalone function to sync orders"""
     agent = SimpleOrdersSync(sheets_manager, shopify_client, config)
     return agent.sync_orders()
