@@ -25,6 +25,7 @@ from ops_agent import OpsAgent
 from format_agent import FormatAgent
 from catalog_agent import CatalogAgent
 from simple_orders_sync import SimpleOrdersSync
+from simple_finance_sync import SimpleFinanceSync
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,15 @@ class SheetsAIAgent:
                 result = simple_sync.sync_orders()
                 response['success'] = result.get('success', False)
                 response['message'] = result.get('message', 'Orders synced!')
+                response['data'] = result.get('data')
+                return response
+            
+            # "init finance" - Initialize FINANCE tab (new structure)
+            if 'init finance' in command_lower:
+                simple_finance = SimpleFinanceSync(self.sheets_manager)
+                result = simple_finance.init_finance_apply()
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'FINANCE tab initialized')
                 response['data'] = result.get('data')
                 return response
             

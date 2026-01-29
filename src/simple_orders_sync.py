@@ -1,157 +1,6 @@
-"""
-Simple Orders Sync - ORDERS tab only implementation
-
-Two commands:
-1. init_orders_apply() - Creates/clears ORDERS tab with headers, formulas, formatting
-2. sync_orders() - Fetches Shopify orders and writes to ORDERS tab
-"""
-import logging
-from typing import Dict, Any, List
-from datetime import datetime
-
-logger = logging.getLogger(__name__)
-
-# ============================================
-# CONFIGURATION
-# ============================================
-
-# New Headers (A:L)
-ORDERS_HEADERS = [
-    'Customer Name',      # A
-    'Product',            # B
-    'Size',               # C
-    'Qty',                # D
-    'Price',              # E
-    'Revenue',            # F (formula)
-    'Unit Cost',          # G
-    'Shipping Label Cost',# H (user input)
-    'Profit',             # I (formula)
-    'Profit Margin %',    # J (formula)
-    'Shopify Payout',     # K
-    'Fulfillment Status'  # L
-]
-
-# Default unit cost
-DEFAULT_UNIT_COST = 12.26
-
-# Number of rows to fill formulas
-FORMULA_ROWS = 2000
-
-
-class SimpleOrdersSync:
-    """Simple sync agent that only works with ORDERS tab"""
-    
-    def __init__(self, sheets_manager, shopify_client, config=None):
-        self.sheets_manager = sheets_manager
-        self.shopify_client = shopify_client
-        self.config = config or {}
-        self.logger = logging.getLogger(__name__)
-    
-    def init_orders_apply(self) -> Dict[str, Any]:
-        """Create/clear ORDERS tab with headers, formulas, and formatting"""
-        self.logger.info("=== INIT ORDERS APPLY ===")
-        
-        try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("ORDERS")
-            sheet.clear()
-            self.logger.info("Cleared ORDERS sheet")
-            
-            # Write headers
-            sheet.update('A1', [ORDERS_HEADERS], value_input_option='USER_ENTERED')
-            
-            # Apply all formatting
-            self._apply_header_formatting(sheet)
-            self._apply_column_formatting(sheet)
-            self._apply_conditional_formatting(sheet)
-            self._fill_formulas(sheet)
-            self._freeze_and_filter(sheet)
-            self._set_column_widths(sheet)
-            self._hide_gridlines(sheet)
-            
-            return {
-                'success': True,
-                'message': '✅ **ORDERS tab initialized!**\n\n'
-                          f'📊 Headers: {len(ORDERS_HEADERS)} columns (A:L)\n'
-                          '📐 Formulas: Revenue, Profit, Margin filled\n'
-                          '🎨 Formatting: New Arcus theme applied'
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Error in init_orders_apply: {e}", exc_info=True)
-            return {'success': False, 'message': f'❌ Failed to initialize ORDERS: {str(e)}'}
-    
-    def sync_orders(self) -> Dict[str, Any]:
-        """Fetch Shopify orders and write to ORDERS tab"""
-        self.logger.info("=== SYNC ORDERS ===")
-        
-        try:
-            sheet = self.sheets_manager.create_sheet_if_not_exists("ORDERS")
-            
-            # Check headers
-            existing_data = sheet.get_all_values()
-            if not existing_data or existing_data[0] != ORDERS_HEADERS:
-                self.logger.info("Headers mismatch, running init first...")
-                self.init_orders_apply()
-                sheet = self.sheets_manager.spreadsheet.worksheet("ORDERS")
-            
-            # Fetch orders
-            orders = self.shopify_client.get_orders(limit=250, status='any')
-            if not orders:
-                return {'success': True, 'message': '⚠️ No orders found in Shopify.'}
-            
-            unit_cost = self.config.get('profit', {}).get('cost_per_shirt', DEFAULT_UNIT_COST)
-            
-            rows = []
-            orders_count = 0
-            skipped_orders = 0
-            
-            for order in orders:
-                try:
-                    orders_count += 1
-                    order_number = order.get('order_number', '')  # Used for tracking but not written
-                    
-                    # Customer
-                    customer = order.get('customer', {}) or {}
-                    customer_name = f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip() or 'Guest'
-                    
-                    # Totals & Status
-                    fulfillment_status = (order.get('fulfillment_status') or 'unfulfilled').capitalize()
-                    total_price = order.get('total_price', '')
-                    
-                    line_items = order.get('line_items', [])
-                    if not line_items:
+                    except Exception as e:
+                        self.logger.warning(f"Error processing order: {e}")
                         skipped_orders += 1
-                        continue
-                    
-                    # One row per line item
-                    for i, item in enumerate(line_items):
-                        product_title = item.get('title', '')
-                        variant_title = item.get('variant_title', '') or ''
-                        quantity = int(item.get('quantity', 1))
-                        price = float(item.get('price', 0))
-                        
-                        # Only show total payout on the first line item of the order
-                        payout_display = total_price if i == 0 else ''
-                        
-                        row = [
-                            customer_name,      # A: Customer Name
-                            product_title,      # B: Product
-                            variant_title,      # C: Size
-                            quantity,           # D: Qty
-                            price,              # E: Price
-                            '',                 # F: Revenue (formula)
-                            unit_cost,          # G: Unit Cost
-                            '',                 # H: Shipping Label Cost (user)
-                            '',                 # I: Profit (formula)
-                            '',                 # J: Margin (formula)
-                            payout_display,     # K: Shopify Payout
-                            fulfillment_status  # L: Fulfillment Status
-                        ]
-                        rows.append(row)
-                        
-                except Exception as e:
-                    self.logger.warning(f"Error processing order: {e}")
-                    skipped_orders += 1
             
             if not rows:
                 return {'success': True, 'message': '⚠️ No line items processed.'}
@@ -182,6 +31,16 @@ class SimpleOrdersSync:
         except Exception as e:
             self.logger.error(f"Error in sync_orders: {e}", exc_info=True)
             return {'success': False, 'message': f'❌ Failed to sync: {str(e)}'}
+
+    def _extract_size(self, text: str) -> str:
+        """Extract size code from text (Small->S, etc)"""
+        text = text.lower()
+        if 'small' in text or ' sm' in text: return 'S'
+        if 'medium' in text or ' med' in text: return 'M'
+        if 'large' in text or ' lg' in text: return 'L'
+        if 'extra large' in text or 'xl' in text: return 'XL'
+        if 'xxl' in text: return 'XXL'
+        return ''
 
     # ============================================
     # FORMATTING HELPERS
@@ -359,16 +218,55 @@ class SimpleOrdersSync:
             }
         })
         
-        # 7. Size column highlight (Col C, index 2) - subtle blue
+        # 7. S Size -> Light Blue (Col C, index 2)
         requests.append({
             "addConditionalFormatRule": {
                 "rule": {
                     "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
                     "booleanRule": {
-                        "condition": {"type": "NOT_BLANK"},
-                        "format": {"textFormat": {"bold": True, "foregroundColor": {"red": 0.2, "green": 0.2, "blue": 0.6}}}
+                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "S"}]},
+                        "format": {"backgroundColor": {"red": 0.85, "green": 0.92, "blue": 1.0}}
                     }
                 }, "index": 6
+            }
+        })
+        
+        # 8. M Size -> Light Green (Col C, index 2)
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "M"}]},
+                        "format": {"backgroundColor": {"red": 0.85, "green": 1.0, "blue": 0.85}}
+                    }
+                }, "index": 7
+            }
+        })
+        
+        # 9. L Size -> Light Yellow (Col C, index 2)
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "L"}]},
+                        "format": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 0.8}}
+                    }
+                }, "index": 8
+            }
+        })
+        
+        # 10. XL Size -> Light Orange (Col C, index 2)
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 2, "endColumnIndex": 3}],
+                    "booleanRule": {
+                        "condition": {"type": "TEXT_CONTAINS", "values": [{"userEnteredValue": "XL"}]},
+                        "format": {"backgroundColor": {"red": 1.0, "green": 0.9, "blue": 0.8}}
+                    }
+                }, "index": 9
             }
         })
         
