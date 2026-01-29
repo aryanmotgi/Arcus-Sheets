@@ -1,6 +1,162 @@
-                    except Exception as e:
-                        self.logger.warning(f"Error processing order: {e}")
+"""
+Simple Orders Sync - ORDERS tab only implementation
+
+Two commands:
+1. init_orders_apply() - Creates/clears ORDERS tab with headers, formulas, formatting
+2. sync_orders() - Fetches Shopify orders and writes to ORDERS tab
+"""
+import logging
+from typing import Dict, Any, List
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+# ============================================
+# CONFIGURATION
+# ============================================
+
+# New Headers (A:L)
+ORDERS_HEADERS = [
+    'Customer Name',      # A
+    'Product',            # B
+    'Size',               # C
+    'Qty',                # D
+    'Price',              # E
+    'Revenue',            # F (formula)
+    'Unit Cost',          # G
+    'Shipping Label Cost',# H (user input)
+    'Profit',             # I (formula)
+    'Profit Margin %',    # J (formula)
+    'Shopify Payout',     # K
+    'Fulfillment Status'  # L
+]
+
+# Default unit cost
+DEFAULT_UNIT_COST = 12.26
+
+# Number of rows to fill formulas
+FORMULA_ROWS = 2000
+
+
+class SimpleOrdersSync:
+    """Simple sync agent that only works with ORDERS tab"""
+    
+    def __init__(self, sheets_manager, shopify_client, config=None):
+        self.sheets_manager = sheets_manager
+        self.shopify_client = shopify_client
+        self.config = config or {}
+        self.logger = logging.getLogger(__name__)
+    
+    def init_orders_apply(self) -> Dict[str, Any]:
+        """Create/clear ORDERS tab with headers, formulas, and formatting"""
+        self.logger.info("=== INIT ORDERS APPLY ===")
+        
+        try:
+            sheet = self.sheets_manager.create_sheet_if_not_exists("ORDERS")
+            sheet.clear()
+            self.logger.info("Cleared ORDERS sheet")
+            
+            # Write headers
+            sheet.update('A1', [ORDERS_HEADERS], value_input_option='USER_ENTERED')
+            
+            # Apply all formatting
+            self._apply_header_formatting(sheet)
+            self._apply_column_formatting(sheet)
+            self._apply_conditional_formatting(sheet)
+            self._fill_formulas(sheet)
+            self._freeze_and_filter(sheet)
+            self._set_column_widths(sheet)
+            self._hide_gridlines(sheet)
+            
+            return {
+                'success': True,
+                'message': '✅ **ORDERS tab initialized!**\n\n'
+                          f'📊 Headers: {len(ORDERS_HEADERS)} columns (A:L)\n'
+                          '📐 Formulas: Revenue, Profit, Margin filled\n'
+                          '🎨 Formatting: New Arcus theme applied'
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Error in init_orders_apply: {e}", exc_info=True)
+            return {'success': False, 'message': f'❌ Failed to initialize ORDERS: {str(e)}'}
+    
+    def sync_orders(self) -> Dict[str, Any]:
+        """Fetch Shopify orders and write to ORDERS tab"""
+        self.logger.info("=== SYNC ORDERS ===")
+        
+        try:
+            sheet = self.sheets_manager.create_sheet_if_not_exists("ORDERS")
+            
+            # Check headers
+            existing_data = sheet.get_all_values()
+            if not existing_data or existing_data[0] != ORDERS_HEADERS:
+                self.logger.info("Headers mismatch, running init first...")
+                self.init_orders_apply()
+                sheet = self.sheets_manager.spreadsheet.worksheet("ORDERS")
+            
+            # Fetch orders
+            orders = self.shopify_client.get_orders(limit=250, status='any')
+            if not orders:
+                return {'success': True, 'message': '⚠️ No orders found in Shopify.'}
+            
+            unit_cost = self.config.get('profit', {}).get('cost_per_shirt', DEFAULT_UNIT_COST)
+            
+            rows = []
+            orders_count = 0
+            skipped_orders = 0
+            
+            for order in orders:
+                try:
+                    orders_count += 1
+                    order_number = order.get('order_number', '')  # Used for tracking but not written
+                    
+                    # Customer
+                    customer = order.get('customer', {}) or {}
+                    customer_name = f"{customer.get('first_name', '')} {customer.get('last_name', '')}".strip() or 'Guest'
+                    
+                    # Totals & Status
+                    fulfillment_status = (order.get('fulfillment_status') or 'unfulfilled').capitalize()
+                    total_price = order.get('total_price', '')
+                    
+                    line_items = order.get('line_items', [])
+                    if not line_items:
                         skipped_orders += 1
+                        continue
+                    
+                    # One row per line item
+                    for i, item in enumerate(line_items):
+                        product_title = item.get('title', '')
+                        variant_title = item.get('variant_title', '') or ''
+                        quantity = int(item.get('quantity', 1))
+                        price = float(item.get('price', 0))
+                        
+                        # Only show total payout on the first line item of the order
+                        payout_display = total_price if i == 0 else ''
+                        
+                        # Size extraction logic
+                        size = variant_title
+                        if not size or size == 'Default Title':
+                            size = self._extract_size(product_title)
+                        
+                        row = [
+                            customer_name,      # A: Customer Name
+                            product_title,      # B: Product
+                            size,               # C: Size
+                            quantity,           # D: Qty
+                            price,              # E: Price
+                            '',                 # F: Revenue (formula)
+                            unit_cost,          # G: Unit Cost
+                            '',                 # H: Shipping Label Cost (user)
+                            '',                 # I: Profit (formula)
+                            '',                 # J: Margin (formula)
+                            payout_display,     # K: Shopify Payout
+                            fulfillment_status  # L: Fulfillment Status
+                        ]
+                        rows.append(row)
+                        
+                except Exception as e:
+                    self.logger.warning(f"Error processing order: {e}")
+                    skipped_orders += 1
             
             if not rows:
                 return {'success': True, 'message': '⚠️ No line items processed.'}
@@ -327,10 +483,17 @@
         requests = [{"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"hideGridlines": True}}, "fields": "gridProperties.hideGridlines"}}]
         self.sheets_manager.spreadsheet.batch_update({"requests": requests})
 
+# ============================================
+# STANDALONE FUNCTIONS (for direct import)
+# ============================================
+
 def init_orders_apply(sheets_manager, shopify_client=None, config=None) -> Dict[str, Any]:
+    """Standalone function to initialize ORDERS tab"""
     agent = SimpleOrdersSync(sheets_manager, shopify_client, config)
     return agent.init_orders_apply()
 
+
 def sync_orders(sheets_manager, shopify_client, config=None) -> Dict[str, Any]:
+    """Standalone function to sync orders"""
     agent = SimpleOrdersSync(sheets_manager, shopify_client, config)
     return agent.sync_orders()
