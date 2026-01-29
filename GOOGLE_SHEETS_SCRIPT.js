@@ -57,7 +57,7 @@ function showCommandDialog() {
     .setWidth(600)
     .setHeight(500)
     .setTitle('AI Agent - Command Interface');
-  
+
   SpreadsheetApp.getUi().showModalDialog(html, '🤖 AI Agent Command Interface');
 }
 
@@ -75,7 +75,7 @@ function executeCommand(command) {
         message: '⚠️ API_URL is not set!\n\nPlease update API_URL in the script:\n1. Open Apps Script editor\n2. Find the API_URL constant at the top\n3. Replace with your Render URL:\n   https://your-app.onrender.com/api/agent/command\n4. Save and try again'
       };
     }
-    
+
     // Validate command
     if (!command || command.trim() === '') {
       Logger.log('ERROR: Empty command received');
@@ -85,11 +85,11 @@ function executeCommand(command) {
         message: 'Please enter a command'
       };
     }
-    
+
     var payload = {
       'command': command.trim()
     };
-    
+
     var options = {
       'method': 'post',
       'contentType': 'application/json',
@@ -99,27 +99,27 @@ function executeCommand(command) {
       'validateHttpsCertificates': false,
       'timeout': 30000  // 30 second timeout
     };
-    
+
     // Log request details
     Logger.log('=== API Request ===');
     Logger.log('API_URL: ' + API_URL);
     Logger.log('Command: ' + command);
     Logger.log('Payload: ' + JSON.stringify(payload));
-    
+
     // Make request
     var response = UrlFetchApp.fetch(API_URL, options);
     var responseCode = response.getResponseCode();
     var responseText = response.getContentText();
-    
+
     // Log response details
     Logger.log('=== API Response ===');
     Logger.log('Response Code: ' + responseCode);
     Logger.log('Response Body: ' + responseText.substring(0, 500)); // Limit log size
-    
+
     // Check for HTTP errors
     if (responseCode < 200 || responseCode >= 300) {
       Logger.log('ERROR: HTTP error ' + responseCode);
-      
+
       var errorMsg = 'Server returned error: ' + responseCode;
       if (responseCode === 0 || responseCode === 502 || responseCode === 503) {
         errorMsg += '\n\n⚠️ Service may be sleeping (free tier) or not responding.\n';
@@ -131,14 +131,14 @@ function executeCommand(command) {
         errorMsg += '\n\nShould end with: /api/agent/command';
       }
       errorMsg += '\n\nResponse: ' + responseText.substring(0, 200);
-      
+
       return {
         success: false,
         error: 'HTTP ' + responseCode,
         message: errorMsg
       };
     }
-    
+
     // Parse JSON response
     var result;
     try {
@@ -152,9 +152,9 @@ function executeCommand(command) {
         message: 'Failed to parse server response:\n' + responseText.substring(0, 200)
       };
     }
-    
+
     Logger.log('Parsed result: ' + JSON.stringify(result).substring(0, 500));
-    
+
     return {
       success: true,
       data: result
@@ -163,7 +163,7 @@ function executeCommand(command) {
     Logger.log('ERROR: Exception in executeCommand');
     Logger.log('Error: ' + error.toString());
     Logger.log('Stack: ' + error.stack);
-    
+
     var errorMsg = 'Failed to connect to API.\n\n';
     if (error.toString().includes('timeout') || error.toString().includes('timed out')) {
       errorMsg += '⚠️ Request timed out. This usually means:\n';
@@ -176,7 +176,7 @@ function executeCommand(command) {
       errorMsg += 'Error: ' + error.toString();
       errorMsg += '\n\nMake sure:\n1. API_URL is correct\n2. Service is running on Render\n3. Check Apps Script Execution log for details';
     }
-    
+
     return {
       success: false,
       error: error.toString(),
@@ -192,7 +192,7 @@ function pingApi() {
   try {
     Logger.log('=== PING API ===');
     Logger.log('API_URL: ' + API_URL);
-    
+
     // Check API_URL first
     if (API_URL.includes('YOUR-APP-NAME') || API_URL.includes('localhost')) {
       var ui = SpreadsheetApp.getUi();
@@ -208,10 +208,10 @@ function pingApi() {
       );
       return { success: false, error: 'API_URL not configured' };
     }
-    
+
     var result = executeCommand('ping');
     Logger.log('Ping result: ' + JSON.stringify(result));
-    
+
     var ui = SpreadsheetApp.getUi();
     if (result.success) {
       var responseData = result.data && result.data.data ? JSON.stringify(result.data.data, null, 2) : JSON.stringify(result.data, null, 2);
@@ -258,10 +258,10 @@ function syncOrders() {
       'This will sync all orders from Shopify to Google Sheets. Continue?',
       ui.ButtonSet.YES_NO
     );
-    
+
     if (response == ui.Button.YES) {
       var result = executeCommand('sync orders');
-      
+
       if (result.success && result.data.success) {
         ui.alert('Success!', 'Orders synced successfully!\n\nRefresh your sheet to see updates.', ui.ButtonSet.OK);
         // Refresh the sheet
@@ -282,7 +282,7 @@ function syncOrders() {
 function showRevenue() {
   try {
     var result = executeCommand('show revenue');
-    
+
     if (result.success && result.data.success) {
       var revenue = result.data.data.revenue;
       var message = '💰 Revenue Information\n\n';
@@ -290,7 +290,7 @@ function showRevenue() {
       message += 'Net Profit: ' + revenue.net_profit + '\n';
       message += 'Units Sold: ' + revenue.units_sold + '\n';
       message += 'Shopify Payout: ' + revenue.shopify_payout;
-      
+
       SpreadsheetApp.getUi().alert('Revenue', message, SpreadsheetApp.getUi().ButtonSet.OK);
     } else {
       var errorMsg = result.success ? result.data.message : result.message;
@@ -307,18 +307,18 @@ function showRevenue() {
 function ordersSummary() {
   try {
     var result = executeCommand('orders summary');
-    
+
     if (result.success && result.data.success) {
       var data = result.data.data;
       var message = '📊 Orders Summary\n\n';
       message += 'Total Orders: ' + data.total_orders + '\n';
       message += 'Total Value: $' + data.total_value.toFixed(2) + '\n\n';
       message += 'Status Breakdown:\n';
-      
+
       for (var status in data.status_breakdown) {
         message += '  • ' + status + ': ' + data.status_breakdown[status] + '\n';
       }
-      
+
       SpreadsheetApp.getUi().alert('Orders Summary', message, SpreadsheetApp.getUi().ButtonSet.OK);
     } else {
       var errorMsg = result.success ? result.data.message : result.message;
@@ -335,7 +335,7 @@ function ordersSummary() {
 function profitBreakdown() {
   try {
     var result = executeCommand('profit breakdown');
-    
+
     if (result.success && result.data.success) {
       var profit = result.data.data.profit_breakdown;
       var message = '📈 Profit Breakdown\n\n';
@@ -344,7 +344,7 @@ function profitBreakdown() {
       message += 'Total Costs: ' + profit.total_costs + '\n';
       message += 'Net Profit: ' + profit.net_profit + '\n';
       message += 'Profit Per Shirt: ' + profit.profit_per_shirt;
-      
+
       SpreadsheetApp.getUi().alert('Profit Breakdown', message, SpreadsheetApp.getUi().ButtonSet.OK);
     } else {
       var errorMsg = result.success ? result.data.message : result.message;
@@ -361,12 +361,12 @@ function profitBreakdown() {
 function productSales() {
   try {
     var result = executeCommand('product sales');
-    
+
     if (result.success && result.data.success) {
       var data = result.data.data;
       var message = '🛍️ Product Sales\n\n';
       message += 'Total Products: ' + data.total_products + '\n\n';
-      
+
       if (data.product_sales) {
         message += 'Product Breakdown:\n';
         for (var product in data.product_sales) {
@@ -376,7 +376,7 @@ function productSales() {
           message += '    - Revenue: $' + sales['Unit Price'].toFixed(2) + '\n';
         }
       }
-      
+
       SpreadsheetApp.getUi().alert('Product Sales', message, SpreadsheetApp.getUi().ButtonSet.OK);
     } else {
       var errorMsg = result.success ? result.data.message : result.message;
@@ -393,7 +393,7 @@ function productSales() {
 function backupPSL() {
   try {
     var result = executeCommand('backup PSL');
-    
+
     if (result.success && result.data.success) {
       SpreadsheetApp.getUi().alert('Success!', 'PSL values backed up successfully!', SpreadsheetApp.getUi().ButtonSet.OK);
     } else {
@@ -416,10 +416,10 @@ function restorePSL() {
       'This will restore PSL values from backup. Continue?',
       ui.ButtonSet.YES_NO
     );
-    
+
     if (response == ui.Button.YES) {
       var result = executeCommand('restore PSL');
-      
+
       if (result.success && result.data.success) {
         ui.alert('Success!', 'PSL values restored successfully!', ui.ButtonSet.OK);
       } else {
