@@ -42,6 +42,8 @@ function onOpen() {
     .addItem('📥 Restore PSL', 'restorePSL')
     .addSeparator()
     .addItem('🔍 Ping API (Debug)', 'pingApi')
+    .addSeparator()
+    .addItem('🔄 Hard Reset Sheet', 'hardResetSpreadsheet')
     .addToUi();
 }
 

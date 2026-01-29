@@ -24,6 +24,7 @@ from costs_agent import CostsAgent
 from ops_agent import OpsAgent
 from format_agent import FormatAgent
 from catalog_agent import CatalogAgent
+from simple_orders_sync import SimpleOrdersSync
 
 logger = logging.getLogger(__name__)
 
@@ -196,9 +197,28 @@ class SheetsAIAgent:
                 response['data'] = result.get('data')
                 return response
             
-            # Sync Agent - handles syncing orders from Shopify
+            # === SIMPLE ORDERS SYNC (ORDERS tab only) ===
+            # "init orders" / "init orders apply" - Initialize ORDERS tab
+            if 'init order' in command_lower or 'init orders' in command_lower:
+                simple_sync = SimpleOrdersSync(self.sheets_manager, self.shopify_client, self.config)
+                result = simple_sync.init_orders_apply()
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'ORDERS tab initialized')
+                response['data'] = result.get('data')
+                return response
+            
+            # "sync orders" - Sync Shopify orders to ORDERS tab
+            if any(word in command_lower for word in ['sync order', 'sync orders', 'sync all orders']):
+                simple_sync = SimpleOrdersSync(self.sheets_manager, self.shopify_client, self.config)
+                result = simple_sync.sync_orders()
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Orders synced!')
+                response['data'] = result.get('data')
+                return response
+            
+            # Sync Agent - handles other sync commands (legacy)
             if any(word in command_lower for word in ['sync', 'update', 'refresh', 'pull', 'fetch', 'get orders']):
-                if any(word in command_lower for word in ['order', 'sheet', 'shopify', 'data', 'everything', 'all']):
+                if any(word in command_lower for word in ['sheet', 'shopify', 'data', 'everything', 'all']):
                     result = self.sync_agent.process_command(command)
                     response['success'] = result.get('status') == 'success' or result.get('success', False)
                     response['message'] = result.get('message', 'Orders synced!')
