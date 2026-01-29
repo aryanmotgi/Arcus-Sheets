@@ -8,6 +8,7 @@ Two commands:
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,10 @@ DEFAULT_UNIT_COST = 12.26
 # Number of rows to fill formulas
 FORMULA_ROWS = 2000
 
+# Valid Options
+VALID_PRODUCTS = ["Arcus Tee", "All Paths Tee"]
+VALID_SIZES = ["XS", "S", "M", "L", "XL", "XXL"]
+
 
 class SimpleOrdersSync:
     """Simple sync agent that only works with ORDERS tab"""
@@ -59,10 +64,11 @@ class SimpleOrdersSync:
             # Write headers
             sheet.update('A1', [ORDERS_HEADERS], value_input_option='USER_ENTERED')
             
-            # Apply all formatting
+            # Apply all formatting and validation
             self._apply_header_formatting(sheet)
             self._apply_column_formatting(sheet)
             self._apply_conditional_formatting(sheet)
+            self._apply_data_validation(sheet)
             self._fill_formulas(sheet)
             self._freeze_and_filter(sheet)
             self._set_column_widths(sheet)
@@ -73,7 +79,8 @@ class SimpleOrdersSync:
                 'message': '✅ **ORDERS tab initialized!**\n\n'
                           f'📊 Headers: {len(ORDERS_HEADERS)} columns (A:L)\n'
                           '📐 Formulas: Revenue, Profit, Margin filled\n'
-                          '🎨 Formatting: New Arcus theme applied'
+                          '🎨 Formatting: New Arcus theme applied\n'
+                          '🛡️ Validation: Dropdowns added for Product & Size'
             }
             
         except Exception as e:
@@ -108,7 +115,7 @@ class SimpleOrdersSync:
             for order in orders:
                 try:
                     orders_count += 1
-                    order_number = order.get('order_number', '')  # Used for tracking but not written
+                    order_number = order.get('order_number', '')
                     
                     # Customer
                     customer = order.get('customer', {}) or {}
@@ -125,18 +132,16 @@ class SimpleOrdersSync:
                     
                     # One row per line item
                     for i, item in enumerate(line_items):
-                        product_title = item.get('title', '')
-                        variant_title = item.get('variant_title', '') or ''
+                        raw_title = item.get('title', '')
+                        raw_variant = item.get('variant_title', '') or ''
                         quantity = int(item.get('quantity', 1))
                         price = float(item.get('price', 0))
                         
+                        # Normalization Logic
+                        product_title, size = self._normalize_product_and_size(raw_title, raw_variant)
+                        
                         # Only show total payout on the first line item of the order
                         payout_display = total_price if i == 0 else ''
-                        
-                        # Size extraction logic
-                        size = variant_title
-                        if not size or size == 'Default Title':
-                            size = self._extract_size(product_title)
                         
                         row = [
                             customer_name,      # A: Customer Name
@@ -180,7 +185,7 @@ class SimpleOrdersSync:
                 'message': f'✅ **Sync Complete!**\n\n'
                           f'📦 Orders Processed: {orders_count}\n'
                           f'📝 Rows Written: {len(rows)}\n'
-                          f'⚡ formatting applied automatically.',
+                          f'⚡ formatting & validation applied automatically.',
                 'data': {'orders': orders_count, 'rows': len(rows)}
             }
             
@@ -188,19 +193,86 @@ class SimpleOrdersSync:
             self.logger.error(f"Error in sync_orders: {e}", exc_info=True)
             return {'success': False, 'message': f'❌ Failed to sync: {str(e)}'}
 
-    def _extract_size(self, text: str) -> str:
-        """Extract size code from text (Small->S, etc)"""
-        text = text.lower()
-        if 'small' in text or ' sm' in text: return 'S'
-        if 'medium' in text or ' med' in text: return 'M'
-        if 'large' in text or ' lg' in text: return 'L'
-        if 'extra large' in text or 'xl' in text: return 'XL'
-        if 'xxl' in text: return 'XXL'
-        return ''
+    def _normalize_product_and_size(self, title: str, variant: str):
+        """Normalize product name and size based on rigorous logic"""
+        combined_text = (title + " " + variant).lower()
+        
+        # 1. Normalize Product Name
+        clean_product = title # Default to original if no match
+        if "arcus" in combined_text:
+            clean_product = "Arcus Tee"
+        elif "all paths" in combined_text:
+            clean_product = "All Paths Tee"
+            
+        # 2. Normalize Size
+        clean_size = ""
+        # Check standard codes first
+        if "xxl" in combined_text: clean_size = "XXL"
+        elif "xl" in combined_text or "extra large" in combined_text: clean_size = "XL"
+        elif "large" in combined_text or " lg " in combined_text or combined_text.endswith(" lg"): clean_size = "L"
+        elif "medium" in combined_text or " med " in combined_text or combined_text.endswith(" med"): clean_size = "M"
+        elif "small" in combined_text or " sm " in combined_text or combined_text.endswith(" sm"): clean_size = "S"
+        elif "xs" in combined_text or "extra small" in combined_text: clean_size = "XS"
+        
+        # Fallback: if variant is exactly a valid code
+        if not clean_size and variant.upper() in VALID_SIZES:
+            clean_size = variant.upper()
+            
+        # Fallback: single letter checks (risky, so only check variant)
+        if not clean_size:
+            v_upper = variant.upper().strip()
+            if v_upper in ["S", "M", "L", "XL"]:
+                clean_size = v_upper
+
+        return clean_product, clean_size
 
     # ============================================
-    # FORMATTING HELPERS
+    # FORMATTING & VALIDATION HELPERS
     # ============================================
+    
+    def _apply_data_validation(self, sheet):
+        """Apply dropdown validation to Product and Size columns"""
+        requests = []
+        
+        # Product Dropdown (Col B)
+        requests.append({
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet.id,
+                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
+                    "startColumnIndex": 1, "endColumnIndex": 2
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": v} for v in VALID_PRODUCTS]
+                    },
+                    "showCustomUi": True,
+                    "strict": False # Allow other values but show warning
+                }
+            }
+        })
+        
+        # Size Dropdown (Col C)
+        requests.append({
+            "setDataValidation": {
+                "range": {
+                    "sheetId": sheet.id,
+                    "startRowIndex": 1, "endRowIndex": FORMULA_ROWS + 1,
+                    "startColumnIndex": 2, "endColumnIndex": 3
+                },
+                "rule": {
+                    "condition": {
+                        "type": "ONE_OF_LIST",
+                        "values": [{"userEnteredValue": v} for v in VALID_SIZES]
+                    },
+                    "showCustomUi": True,
+                    "strict": False
+                }
+            }
+        })
+        
+        self.sheets_manager.spreadsheet.batch_update({"requests": requests})
     
     def _apply_header_formatting(self, sheet):
         """Bold, centered, gray bg, borders"""
@@ -426,12 +498,25 @@ class SimpleOrdersSync:
             }
         })
         
+        # 11. Blank Shipping Cost Check -> Yellow (Col H, index 7)
+        requests.append({
+            "addConditionalFormatRule": {
+                "rule": {
+                    "ranges": [{"sheetId": sheet.id, "startRowIndex": 1, "endRowIndex": FORMULA_ROWS, "startColumnIndex": 7, "endColumnIndex": 8}],
+                    "booleanRule": {
+                        "condition": {"type": "BLANK"},
+                        "format": {"backgroundColor": {"red": 1.0, "green": 0.95, "blue": 0.8}}
+                    }
+                }, "index": 10
+            }
+        })
+        
         self.sheets_manager.spreadsheet.batch_update({"requests": requests})
     
     def _fill_formulas(self, sheet):
         """Fill formulas for Revenue, Profit, Margin"""
         # Rev = Qty(D)*Price(E) -> F
-        # Profit = Rev(F) - (Cost(G)*Qty(D)) - Ship(H) -> I
+        # Profit = Rev(F) - (UnitCost(G)*Qty(D)) - ShipLabel(H) -> I
         # Margin = Profit(I) / Rev(F) -> J
         
         formulas_rev = []
@@ -440,6 +525,7 @@ class SimpleOrdersSync:
         
         for r in range(2, FORMULA_ROWS + 2):
             formulas_rev.append([f'=IFERROR(D{r}*E{r},"")'])
+            # Profit = Revenue - Total COGS (UnitCost*Qty) - Shipping
             formulas_prof.append([f'=IFERROR(F{r}-(G{r}*D{r})-H{r},"")'])
             formulas_marg.append([f'=IFERROR(I{r}/F{r},"")'])
         
