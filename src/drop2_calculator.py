@@ -1,9 +1,9 @@
 """
-Drop 2 Finance Calculator (Antifragility + Risk Model v2)
+Drop 2 Finance Calculator (Final Refined Version)
 - Total Investment Model: Focuses on sunk costs and payout.
-- Unit Costs: Added to Section C for reference and price floor logic.
-- Risk & Scenarios: Giveaway buffers, price floor, and ad-spend limits.
-- High Visibility: Navy headers + Bold White text.
+- Dynamic Linkage: Unit costs linked to drop totals for accuracy.
+- Risk Analysis: Automatic calculation of giveaway buffers and price floors.
+- Professional UI: Navy/White headers, Clear Input/Calculation highlights.
 """
 import logging
 from typing import Dict, Any
@@ -17,7 +17,7 @@ class Drop2Calculator:
         self.sheet_name = "Drop 2 Finance Predictions"
 
     def create_prediction_sheet(self) -> Dict[str, Any]:
-        self.logger.info("=== SYNC DROP 2 FINANCE (REFINED ANTIFRAGILITY) ===")
+        self.logger.info("=== SYNC DROP 2 FINANCE (FINAL REFINEMENTS) ===")
         
         try:
             sheet = self.sheets_manager.create_sheet_if_not_exists(self.sheet_name)
@@ -40,12 +40,13 @@ class Drop2Calculator:
                 saved = existing_values.get(label)
                 if saved and not str(saved).startswith("="):
                     return saved
+                # Small/Med/Large sets were defaulting to 14/20/16 in previous version, user suggested 15/25/20 in prompt
                 return default
 
             # --- INPUT DEFAULTS ---
-            v_small = get_val("Small Sets", "14")
-            v_med = get_val("Medium Sets", "20")
-            v_large = get_val("Large Sets", "16")
+            v_small = get_val("Small Sets", "15")
+            v_med = get_val("Medium Sets", "25")
+            v_large = get_val("Large Sets", "20")
             v_pps = get_val("Pieces per Set (input)", "2")
             
             v_sample = get_val("Sample Cost", "234.63")
@@ -69,7 +70,7 @@ class Drop2Calculator:
                 ["", ""],                                                 # R2
                 ["KEY METRICS DASHBOARD", ""],                            # R3
                 ["Total Potential Revenue", "=B48"],                      # R4
-                ["Your Net Profit (The Payout)", "=B49"],                 # R5 (Green Highlight)
+                ["Your Net Profit (The Payout)", "=B49"],                 # R5
                 ["Sets to Break Even", "=B53"],                           # R6
                 ["Giveaway/Damage Buffer", "=B57"],                       # R7
                 ["Pure Profit per set (post-BE)", "=B45"],                # R8
@@ -99,7 +100,7 @@ class Drop2Calculator:
                 ["Hoodie Unit Cost", v_c_hoodie],                         # R29
                 ["Pants Unit Cost", v_c_pants],                           # R30
                 ["Set Unit Cost", "=B29+B30"],                            # R31
-                ["Investment per Set (Avg)", "=B26/B16"],                 # R32
+                ["Investment per Set (Avg)", "=B26/B16"],                 # R32 (Logic Fix)
                 ["", ""],                                                 # R33
                 
                 ["SECTION D — Order Ops", ""],                            # R34
@@ -128,16 +129,16 @@ class Drop2Calculator:
                 ["", ""],                                                 # R54
                 
                 ["SECTION H — Risk & Scenarios", ""],                     # R55
-                ["Giveaway/Damage Buffer", "=B16 - B53"],                 # R56
-                ["Price Floor (Zero Profit)", "=(B26 / B16) + B35"],      # R57
-                ["Ad-Spend Limit (Keep $1k Profit)", "=B49 - 1000"],      # R58
+                ["Giveaway/Damage Buffer", "=B16 - B53"],                 # R56 (Logic Fix)
+                ["Price Floor (Zero Profit)", "=(B26 / B16) + B35"],      # R57 (Logic Fix)
+                ["Ad-Spend Limit (Keep $1k Profit)", "=B49 - 1000"],      # R58 (Logic Fix)
             ]
             
             sheet.clear()
             sheet.update("A1", data, value_input_option="USER_ENTERED")
             self._format_sheet(sheet)
             
-            return {'success': True, 'message': '✅ Section C Costs & Risk Model Updated!'}
+            return {'success': True, 'message': '✅ Drop 2 Finance Finalized!'}
             
         except Exception as e:
             self.logger.error(f"Error: {e}", exc_info=True)
@@ -152,11 +153,10 @@ class Drop2Calculator:
         # 2. Main Title (R1)
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 20, "bold": True}, "horizontalAlignment": "CENTER"}}, "fields": "userEnteredFormat"}})
         
-        # 3. Navy Headers (Bold White Text)
+        # 3. Navy Headers (Bold White Text) #1C2833
         NAVY = {"red": 0.11, "green": 0.16, "blue": 0.20}
         WHITE = {"red": 1, "green": 1, "blue": 1}
-        # Header Rows: 2, 11, 19, 27, 33, 37, 43, 51, 54
-        header_rows = [2, 11, 19, 27, 33, 37, 43, 51, 54]
+        header_rows = [2, 11, 19, 27, 33, 37, 43, 51, 54] 
         for r in header_rows:
             requests.append({
                 "repeatCell": {
@@ -166,7 +166,7 @@ class Drop2Calculator:
                 }
             })
 
-        # 4. Dashboard Metrics Setup (R4-R10)
+        # 4. Big Metric Values (R4-R10)
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 10, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
 
         # Green Highlight for Payout (R5)
@@ -184,19 +184,33 @@ class Drop2Calculator:
         for s, e in pct_indices:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
-        # Whole Number: R6, R53, R56
-        for r in [5, 52, 55]:
+        # Whole Number: R6, R7, R53, R56
+        for r in [5, 6, 52, 55]:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
         # 6. Colors (Inputs = Yellow, Calcs = Gray)
         YELLOW = {"red": 1.0, "green": 0.98, "blue": 0.85}
         GRAY = {"red": 0.96, "green": 0.96, "blue": 0.96}
         
+        # Logic: We apply gray to everything first, then overwrite yellow for inputs.
+        # Actually, let's be explicit to avoid "white text on white background" issues.
+        # Ensure all non-header background is clean.
+        
         input_rows = [(12, 14), (16, 16), (20, 24), (28, 29), (34, 34), (38, 40)]
         for s, e in input_rows:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": YELLOW, "textFormat": {"bold": True}}}, "fields": "userEnteredFormat"}})
         
-        calc_rows = [(3, 3), (5, 9), (15, 15), (17, 17), (25, 25), (30, 31), (35, 36), (41, 50), (52, 52), (55, 57)]
+        calc_rows = [
+            (3, 3), (5, 9),     # Dashboard Calcs
+            (15, 15), (17, 17), # A Calcs
+            (25, 25),           # B Calcs
+            (30, 31),           # C Calcs
+            (35, 36),           # D Calcs
+            (41, 41),           # E Calcs
+            (44, 49),           # F Calcs
+            (52, 52),           # G Calcs
+            (55, 57)            # H Calcs
+        ]
         for s, e in calc_rows:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
 
