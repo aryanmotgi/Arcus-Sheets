@@ -101,11 +101,11 @@ class Drop2Calculator:
             data.extend([
                 ["KEY METRICS DASHBOARD", ""],                            # 3 Header
                 
-                ["Revenue Per Set", "=B38"],                              # 4
-                ["Profit Per Set", "=B42"],                               # 5
-                ["Profit Margin %", "=B48"],                              # 6
-                ["Hoodie Profit (unit)", "=B43"],                         # 7
-                ["Pants Profit (unit)", "=B44"],                          # 8
+                ["Revenue Per Set", "=B42"],                              # 4
+                ["Profit Per Set", "=B45"],                               # 5
+                ["Profit Margin %", "=B50"],                              # 6
+                ["Hoodie Profit (unit)", "=B46"],                         # 7
+                ["Pants Profit (unit)", "=B47"],                          # 8
                 
                 ["Sets to Break Even", "=B53"],                           # 9
                 ["Total Potential Profit", "=B49"],                       # 10
@@ -190,7 +190,7 @@ class Drop2Calculator:
             # SECTION G: Break-Even
             data.extend([
                 ["SECTION G — Break-Even Analysis", ""],                  # 52
-                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"\")"], # 53
+                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"N/A\")"], # 53
                 ["", ""],                                                 # 54
             ])
             
