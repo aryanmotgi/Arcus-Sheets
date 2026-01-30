@@ -33,7 +33,8 @@ class SimpleFinanceSync:
             # Label: J
             # Profit: K
             
-            # Total Collected = Revenue(H) + Shipping(I)
+            # SECTION A (Rows 1-10) - Preserved Layout
+            # Row index 0-9
             
             dataset = [
                 ["SECTION A — Top Summary", ""],                          # 1
@@ -42,79 +43,85 @@ class SimpleFinanceSync:
                 ["Total Profit (Net)", "=IFERROR(SUM(ORDERS!K:K), 0)"],  # 4
                 ["Total Shipping Label Cost", "=IFERROR(SUM(ORDERS!J:J), 0)"], # 5
                 ["Total COGS (Product Costs)", "=SUMPRODUCT(ORDERS!F2:F, ORDERS!E2:E)"], # 6
-                ["Total Manual Costs", "=IFERROR(E21, 0)"],              # 7
-                ["Net Cash In", "=B2-B6-B7"],                            # 8 (Collected - COGS - Manual) (Wait, Label is part of Profit formula so strictly Profit involves Label. But "Net Cash In" usually implies actual bank? 
-                # Profit = Collected - COGS - Label. 
-                # So Sum(Profit) = Sum(Collected) - Sum(COGS) - Sum(Label).
-                # Net Cash In = Sum(Profit) - Manual.
-                # Let's simple use: Total Profit - Manual.
-                # User asked: "Net Cash In = Shopify Payout – Shipping Label Cost – COGS – Manual Costs"
-                # Payout ~ Collected. 
-                # So Net Cash In = Collected - Label - COGS - Manual.
-                # Yes: = B2 - B5 - B6 - B7.
-                
+                ["Total Manual Costs", "=IFERROR(E21, 0)"],              # 7 (Linked to Section C Total)
+                ["Net Cash In", "=B2-B6-B7"],                            # 8 (Collected - COGS - Manual)
                 ["Avg Profit Margin %", "=IFERROR(B4/B2, 0)"],           # 9
                 ["", ""],                                                # 10
                 
+                # SECTION B (Rows 11-15) - Product Breakdown
                 ["SECTION B — Product Breakdown", ""],                   # 11
-                ["Product", "Units Sold", "Total Collected", "Profit", "Avg Margin"], # 12
-                # Arcus Tee
+                ["Product", "Units Sold", "Revenue", "Profit", "Margin %"], # 12
+                # Arcus Tee (Row 13)
                 ["Arcus Tee", 
-                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!E:E), 0)", # Units (Col E)
-                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!H:H) + SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!I:I), 0)", # Collected (H+I)
-                 # Profit: GrossProfit - AllocatedManualCost(if checked)
-                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!K:K) - IF($E$29, $D$38, 0), 0)", 
-                 "=IFERROR(D14/C14, 0)"], # Margin
-                # All Paths Tee
+                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!E:E), 0)", # Units
+                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!H:H), 0)", # Revenue (Clean sum)
+                 "=IFERROR(SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!K:K), 0)", # Profit
+                 "=IFERROR(D13/(C13+SUMIF(ORDERS!C:C, \"*Arcus Tee*\", ORDERS!I:I)), 0)"], # Margin (Profit / Collected)
+                # All Paths Tee (Row 14)
                 ["All Paths Tee",
                  "=IFERROR(SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!E:E), 0)",
-                 "=IFERROR(SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!H:H) + SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!I:I), 0)",
-                 "=IFERROR(SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!K:K) - IF($E$29, $D$39, 0), 0)",
-                 "=IFERROR(D15/C15, 0)"], 
-                ["", ""],                                                # 16
+                 "=IFERROR(SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!H:H), 0)",
+                 "=IFERROR(SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!K:K), 0)",
+                 "=IFERROR(D14/(C14+SUMIF(ORDERS!C:C, \"*All Paths Tee*\", ORDERS!I:I)), 0)"],
+                ["", ""],                                                # 15
                 
-                ["SECTION C — Manual Costs", "", "", "", "Amount ($)"],    # 17
-                ["Samples", "", "", "", "0"],                             # 18
-                ["Bulk Order", "", "", "", "=IF(B28, B25, 0)"],           # 19
-                ["Packaging & Supplies", "", "", "", "0"],                # 20
-                ["Other Costs", "", "", "", "0"],                         # 21
-                ["", "", "", "Total Manual Costs:", "=SUM(E18:E21)"],     # 22
-                ["", ""],                                                # 23
+                # SECTION C (Rows 16-22) - Manual Costs
+                ["SECTION C — Manual Costs", "", "", "", "Amount ($)"],    # 16
+                ["Sample Orders", "", "", "", "0"],                       # 17
+                ["Bulk Order Total", "", "", "", "0"],                    # 18
+                ["Packaging & Supplies", "", "", "", "0"],                # 19
+                ["Other Costs", "", "", "", "0"],                         # 20
+                ["", "", "", "Total Manual Costs:", "=SUM(E17:E20)"],     # 21
+                ["", ""],                                                # 22
                 
-                ["SECTION D — Inventory & Cost Calculator", ""],          # 24
-                ["Total Manual Costs (from C)", "=E22"],                  # 25
-                ["Total Pieces Ordered", "0"],                            # 26
-                ["Total Pieces Sold", "=B14+B15"],                        # 27
-                ["Cost Per Piece (Avg)", "=IF(B26>0, B25/B26, 0)"],       # 28
-                ["Apply Bulk Cost to Manual Costs?", "FALSE"],            # 29
-                ["Allocation Mode", "Per Unit (units sold)"],             # 30
-                ["Target Profit Goal", "1000"],                           # 31
-                ["Units to Hit Target", "=IFERROR((B31-B4)/(B4/B26), 0)"],# 32
-                ["", ""],                                                # 33
+                # SECTION D (Rows 23+) - Inventory & Break-even
+                ["SECTION D — Inventory & Break-even Tools", ""],         # 23
                 
-                ["", ""], # 34 Spacer for Table Header 
-                ["", ""], # 35
-                ["Product", "Units Sold", "Share %", "Allocated Cost", "Allocated/Unit"], # 36
-                # Header at 37
+                # D1 Inventory
+                ["D1) Inventory Tracker", ""],                            # 24
+                ["Total Pieces Ordered", "100"],                          # 25 (Manual)
+                ["Total Pieces Sold", "=B13+B14"],                        # 26
+                ["Remaining Inventory", "=B25-B26"],                      # 27
                 
-                ["=A14", "=B14", "50%", 
-                 "=IF(B30=\"Per Unit (units sold)\", B38*B28, IF(B30=\"By Product Share (%)\", C38*B25, 0))",
-                 "=IF(B38>0, D38/B38, 0)"], 
-                 
-                ["=A15", "=B15", "50%", 
-                 "=IF(B30=\"Per Unit (units sold)\", B39*B28, IF(B30=\"By Product Share (%)\", C39*B25, 0))",
-                 "=IF(B39>0, D39/B39, 0)"], 
-                 
-                ["", ""], # 40
+                # D2 Cost Per Piece
+                ["D2) Cost Per Piece", ""],                               # 28
+                ["Cost Per Piece (Avg)", "=IF(B26>0, B6/B26, 0)"],        # 29 (COGS / Sold)
+                ["", ""],                                                # 30
                 
-                ["SECTION E — Break-even Tracker", ""],                   # 41
-                ["Startup Cost", "809.32"],                               # 42
-                ["Break-even (Profit)", "=B42-B4"],                       # 43
-                ["Break-even (Net Cash In)", "=B42-B8"]                   # 44
+                # D4 Break-even (Fixed)
+                ["D4) Break-even Analysis (Fixed Prices)", ""],           # 31
+                ["Arcus Avg Sell Price", "20"],                           # 32
+                ["All Paths Avg Sell Price", "17"],                       # 33
+                
+                # Unit Profits (Price - Avg Cost from Orders)
+                ["Arcus Unit Profit", "=B32 - IFERROR(AVERAGEIF(ORDERS!C:C, \"*Arcus*\", ORDERS!F:F), 0)"], # 34
+                ["All Paths Unit Profit", "=B33 - IFERROR(AVERAGEIF(ORDERS!C:C, \"*All Paths*\", ORDERS!F:F), 0)"], # 35
+                
+                ["Startup Cost (Section E Legacy)", "809.32"],            # 36
+                ["Remaining to Break Even ($)", "=B36-B4"],               # 37
+                
+                ["Units to Break Even (Arcus)", "=IF(B34>0, B37/B34, 0)"], # 38
+                ["Units to Break Even (All Paths)", "=IF(B35>0, B37/B35, 0)"], # 39
+                
+                # Weighted Avg
+                ["W. Avg Unit Profit", "=IF(B26>0, (B34*B13 + B35*B14)/B26, 0)"], # 40
+                ["Units to Break Even (Mixed)", "=IF(B40>0, B37/B40, 0)"],    # 41
+                ["", ""],                                                 # 42
+                
+                # D5 What-if
+                ["D5) What-if Scenario", ""],                             # 43
+                ["Scenario Arcus Price", "25"],                           # 44
+                ["Scenario All Paths Price", "22"],                       # 45
+                
+                ["New Arcus Unit Profit", "=B44 - IFERROR(AVERAGEIF(ORDERS!C:C, \"*Arcus*\", ORDERS!F:F), 0)"], # 46
+                ["New All Paths Unit Profit", "=B45 - IFERROR(AVERAGEIF(ORDERS!C:C, \"*All Paths*\", ORDERS!F:F), 0)"], # 47
+                
+                ["Arcus Units Needed", "=IF(B46>0, B37/B46, 0)"],         # 48
+                ["All Paths Units Needed", "=IF(B47>0, B37/B47, 0)"],     # 49
+                
+                ["New W. Avg Profit", "=IF(B26>0, (B46*B13 + B47*B14)/B26, 0)"], # 50
+                ["Mixed Units Needed", "=IF(B50>0, B37/B50, 0)"]          # 51
             ]
-             
-            # Adjust Checkbox Row (Index 28 -> Row 29)
-            dataset[28] = ["", "", "", "Apply Bulk Cost to Manual Costs?", "FALSE"]
             
             # Write data
             sheet.update("A1", dataset, value_input_option="USER_ENTERED")
@@ -124,8 +131,8 @@ class SimpleFinanceSync:
             
             return {
                 'success': True,
-                'message': '✅ **FINANCE sheet aligned!**\n'
-                          'Formulas linked to new strict ORDERS layout.'
+                'message': '✅ **FINANCE sheet updated!**\n'
+                          'Sections B, C, D rebuilt. Formatting aligned.'
             }
         except Exception as e:
             self.logger.error(f"Error in init_finance_apply: {e}", exc_info=True)
@@ -134,9 +141,10 @@ class SimpleFinanceSync:
     def _format_finance_sheet(self, sheet):
         requests = []
         
-        # 1. Section Headers (Row 1, 12, 17, 24, 41) -> Indices 0, 11, 16, 23, 40
-        section_indices = [0, 11, 16, 23, 40]
-        for r in section_indices:
+        # 1. Section Headers (Dark Blue)
+        # Rows: 1, 11, 16, 23 (Indices: 0, 10, 15, 22) + Subheaders in D (Indices 23, 27, 30, 42)
+        main_headers = [0, 10, 15, 22]
+        for r in main_headers:
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 0, "endColumnIndex": 5},
@@ -144,58 +152,94 @@ class SimpleFinanceSync:
                     "fields": "userEnteredFormat"
                 }
             })
-
-        # 2. Table Headers (Row 13, 37) -> Indices 12, 36
-        for r in [12, 36]:
+            
+        # Sub-headers in D (Generic Bold, maybe light gray)
+        # 24(D1), 28(D2), 31(D4), 43(D5) -> Indices 23, 27, 30, 42
+        sub_headers = [23, 27, 30, 42]
+        for r in sub_headers:
             requests.append({
                 "repeatCell": {
                     "range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 0, "endColumnIndex": 5},
-                    "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER"}},
-                    "fields": "userEnteredFormat"
+                    "cell": {"userEnteredFormat": {"textFormat": {"bold": True, "fontSize": 10, "underline": True}}},
+                    "fields": "userEnteredFormat.textFormat"
                 }
             })
+
+        # 2. Table Headers (Light Gray)
+        # Row 12 (Index 11), Row 16 (Index 15 part), Row 31/43 inputs?
+        # Specifically Section B header (Row 12 -> Index 11)
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": sheet.id, "startRowIndex": 11, "endRowIndex": 12, "startColumnIndex": 0, "endColumnIndex": 5},
+                "cell": {"userEnteredFormat": {"backgroundColor": {"red": 0.9, "green": 0.9, "blue": 0.9}, "textFormat": {"bold": True}, "horizontalAlignment": "CENTER"}},
+                "fields": "userEnteredFormat"
+            }
+        })
+        
+        # Section C Header Row 16 (Index 15) is handled by main headers, but "Amount ($)" is in col 4
+        # Let's bold the labels in Section C (Col A) and D (Col A)
+        requests.append({
+            "repeatCell": {
+                "range": {"sheetId": sheet.id, "startRowIndex": 16, "endRowIndex": 51, "startColumnIndex": 0, "endColumnIndex": 1},
+                "cell": {"userEnteredFormat": {"textFormat": {"bold": True}}},
+                "fields": "userEnteredFormat.textFormat"
+            }
+        })
             
         # 3. Currency Format ($)
+        # Pattern: "$#,##0.00"
         currency_ranges = [
-            {"startRowIndex": 1, "endRowIndex": 10, "startColumnIndex": 1, "endColumnIndex": 2},
-            {"startRowIndex": 13, "endRowIndex": 15, "startColumnIndex": 2, "endColumnIndex": 4},
-            {"startRowIndex": 17, "endRowIndex": 22, "startColumnIndex": 4, "endColumnIndex": 5},
-            {"startRowIndex": 24, "endRowIndex": 25, "startColumnIndex": 1, "endColumnIndex": 2}, 
-            {"startRowIndex": 27, "endRowIndex": 28, "startColumnIndex": 1, "endColumnIndex": 2}, 
-            {"startRowIndex": 30, "endRowIndex": 31, "startColumnIndex": 1, "endColumnIndex": 2}, 
-            {"startRowIndex": 37, "endRowIndex": 39, "startColumnIndex": 3, "endColumnIndex": 5}, 
-            {"startRowIndex": 41, "endRowIndex": 44, "startColumnIndex": 1, "endColumnIndex": 2},
+            # Section A
+            {"startRowIndex": 1, "endRowIndex": 8, "startColumnIndex": 1, "endColumnIndex": 2}, # B2:B8
+            # Section B (Rev, Profit)
+            {"startRowIndex": 12, "endRowIndex": 14, "startColumnIndex": 2, "endColumnIndex": 4}, # C13:D14
+            # Section C (Amount)
+            {"startRowIndex": 16, "endRowIndex": 21, "startColumnIndex": 4, "endColumnIndex": 5}, # E17:E21
+            # Section D
+            {"startRowIndex": 28, "endRowIndex": 29, "startColumnIndex": 1, "endColumnIndex": 2}, # B29
+            {"startRowIndex": 31, "endRowIndex": 37, "startColumnIndex": 1, "endColumnIndex": 2}, # B32:B37 (Prices, Profits, Startup, Remaining)
+            {"startRowIndex": 43, "endRowIndex": 47, "startColumnIndex": 1, "endColumnIndex": 2}, # B44:B47
+            {"startRowIndex": 49, "endRowIndex": 50, "startColumnIndex": 1, "endColumnIndex": 2}, # B50 (New W Avg)
         ]
         for rng in currency_ranges:
             requests.append({"repeatCell": {"range": dict(sheetId=sheet.id, **rng), "cell": {"userEnteredFormat": {"numberFormat": {"type": "CURRENCY", "pattern": "$#,##0.00"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
         # 4. Percentage Format (%)
+        # Pattern: "0.0%" (1 decimal)
+        pct_pattern = "0.0%"
         pct_ranges = [
-            {"startRowIndex": 8, "endRowIndex": 9, "startColumnIndex": 1, "endColumnIndex": 2},
-            {"startRowIndex": 13, "endRowIndex": 15, "startColumnIndex": 4, "endColumnIndex": 5},
-            {"startRowIndex": 37, "endRowIndex": 39, "startColumnIndex": 2, "endColumnIndex": 3},
+            # Section A
+            {"startRowIndex": 8, "endRowIndex": 9, "startColumnIndex": 1, "endColumnIndex": 2}, # B9
+            # Section B
+            {"startRowIndex": 12, "endRowIndex": 14, "startColumnIndex": 4, "endColumnIndex": 5}, # E13:E14
         ]
         for rng in pct_ranges:
-            requests.append({"repeatCell": {"range": dict(sheetId=sheet.id, **rng), "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.00%"}}}, "fields": "userEnteredFormat.numberFormat"}})
+            requests.append({"repeatCell": {"range": dict(sheetId=sheet.id, **rng), "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": pct_pattern}}}, "fields": "userEnteredFormat.numberFormat"}})
 
-        # 5. Checkbox (E29 -> Index 28)
-        requests.append({"setDataValidation": {"range": {"sheetId": sheet.id, "startRowIndex": 28, "endRowIndex": 29, "startColumnIndex": 4, "endColumnIndex": 5}, "rule": {"condition": {"type": "BOOLEAN"}, "showCustomUi": True}}})
-        
-        # 6. Dropdown (B30 -> Index 29)
-        requests.append({"setDataValidation": {"range": {"sheetId": sheet.id, "startRowIndex": 29, "endRowIndex": 30, "startColumnIndex": 1, "endColumnIndex": 2}, "rule": {"condition": {"type": "ONE_OF_LIST", "values": [{"userEnteredValue": "Per Unit (units sold)"}, {"userEnteredValue": "By Product Share (%)"}]}, "showCustomUi": True}}})
-        
-        # 7. Margins Cond Formatting
-        # (Removed Blue highlights as requested, only keep Warning/Good margins)
-        ranges = [
-            {"sheetId": sheet.id, "startRowIndex": 8, "endRowIndex": 9, "startColumnIndex": 1, "endColumnIndex": 2},
-            {"sheetId": sheet.id, "startRowIndex": 13, "endRowIndex": 15, "startColumnIndex": 4, "endColumnIndex": 5}
+        # 5. Borders (Simple Grid for Section B, C, D)
+        # We can just apply borders to the whole range of data
+        # Section B: 11-14
+        # Section C: 16-21
+        # Section D: 24-51
+        border_ranges = [
+            {"startRowIndex": 11, "endRowIndex": 14, "startColumnIndex": 0, "endColumnIndex": 5},
+            {"startRowIndex": 16, "endRowIndex": 21, "startColumnIndex": 0, "endColumnIndex": 5}, # E22 is empty
+            {"startRowIndex": 24, "endRowIndex": 51, "startColumnIndex": 0, "endColumnIndex": 2}, # D covers A:B primarily
         ]
-        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges, "booleanRule": {"condition": {"type": "NUMBER_LESS", "values": [{"userEnteredValue": "0.25"}]}, "format": {"backgroundColor": {"red": 1.0, "green": 0.8, "blue": 0.8}}}}, "index": 0}})
-        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges, "booleanRule": {"condition": {"type": "NUMBER_BETWEEN", "values": [{"userEnteredValue": "0.25"}, {"userEnteredValue": "0.35"}]}, "format": {"backgroundColor": {"red": 1.0, "green": 1.0, "blue": 0.8}}}}, "index": 1}})
-        requests.append({"addConditionalFormatRule": {"rule": {"ranges": ranges, "booleanRule": {"condition": {"type": "NUMBER_GREATER_THAN_EQ", "values": [{"userEnteredValue": "0.35"}]}, "format": {"backgroundColor": {"red": 0.8, "green": 1.0, "blue": 0.8}}}}, "index": 2}})
+        
+        # Define border style
+        border = {"style": "SOLID", "width": 1, "color": {"red": 0.8, "green": 0.8, "blue": 0.8}}
+        
+        for rng in border_ranges:
+             requests.append({
+                "updateBorders": {
+                    "range": dict(sheetId=sheet.id, **rng),
+                    "top": border, "bottom": border, "left": border, "right": border, "innerHorizontal": border, "innerVertical": border
+                }
+            })
 
-        # 8. Column Widths
-        widths = [250, 150, 120, 120, 150]
+        # 6. Column Widths
+        widths = [200, 150, 120, 120, 120]
         for i, w in enumerate(widths):
             requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": i, "endIndex": i+1}, "properties": {"pixelSize": w}, "fields": "pixelSize"}})
             
