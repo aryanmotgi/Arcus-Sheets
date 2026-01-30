@@ -1,9 +1,9 @@
 """
-Drop 2 Finance Calculator (Final Refined Version)
+Drop 2 Finance Calculator (Split-Screen Layout)
+- Layout: Left side (A/B) for Inputs & Costs, Right side (D/E) for Sales & Risk.
 - Total Investment Model: Focuses on sunk costs and payout.
-- Dynamic Linkage: Unit costs linked to drop totals for accuracy.
-- Risk Analysis: Automatic calculation of giveaway buffers and price floors.
-- Professional UI: Navy/White headers, Clear Input/Calculation highlights.
+- Dynamic Linkage: Side-by-side sections for better UX.
+- Professional UI: Navy/White headers, Side-by-side grid.
 """
 import logging
 from typing import Dict, Any
@@ -17,7 +17,7 @@ class Drop2Calculator:
         self.sheet_name = "Drop 2 Finance Predictions"
 
     def create_prediction_sheet(self) -> Dict[str, Any]:
-        self.logger.info("=== SYNC DROP 2 FINANCE (FINAL REFINEMENTS) ===")
+        self.logger.info("=== SYNC DROP 2 FINANCE (SPLIT-SCREEN LAYOUT) ===")
         
         try:
             sheet = self.sheets_manager.create_sheet_if_not_exists(self.sheet_name)
@@ -28,11 +28,13 @@ class Drop2Calculator:
                 raw_data = sheet.get_all_values()
                 if raw_data:
                     for row in raw_data:
-                        if len(row) >= 2:
-                            label = row[0].strip()
-                            val = row[1].strip()
-                            if label and val:
-                                existing_values[label] = val
+                        # Scan both sides for labels
+                        for i in [0, 3]: # Col A and Col D
+                            if len(row) > i+1:
+                                label = row[i].strip()
+                                val = row[i+1].strip()
+                                if label and val:
+                                    existing_values[label] = val
             except Exception as e:
                 self.logger.warning(f"Persistence read failed: {e}")
 
@@ -40,7 +42,6 @@ class Drop2Calculator:
                 saved = existing_values.get(label)
                 if saved and not str(saved).startswith("="):
                     return saved
-                # Small/Med/Large sets were defaulting to 14/20/16 in previous version, user suggested 15/25/20 in prompt
                 return default
 
             # --- INPUT DEFAULTS ---
@@ -64,81 +65,54 @@ class Drop2Calculator:
             v_p_pants = get_val("Pants Sell Price", "35.00")
             v_p_set = get_val("Set Sell Price (Bundle)", "65.00")
 
-            # --- DATA ARRAY ---
+            # --- DATA ARRAY (5 COLUMNS: A, B, C, D, E) ---
+            # Dashboard: Rows 1-11
+            # Sections: Row 12+
+            
             data = [
-                ["DROP 2 FINANCE PREDICTIONS (ANTIFRAGILITY)", ""],       # R1
-                ["", ""],                                                 # R2
-                ["KEY METRICS DASHBOARD", ""],                            # R3
-                ["Total Potential Revenue", "=B48"],                      # R4
-                ["Your Net Profit (The Payout)", "=B49"],                 # R5
-                ["Sets to Break Even", "=B53"],                           # R6
-                ["Giveaway/Damage Buffer", "=B57"],                       # R7
-                ["Pure Profit per set (post-BE)", "=B45"],                # R8
-                ["Price Floor (Zero Profit)", "=B58"],                    # R9
-                ["Ad-Spend Limit (Keep $1k Profit)", "=B59"],             # R10
-                ["", ""],                                                 # R11
+                ["DROP 2 FINANCE PREDICTIONS", "", "", "", ""],                             # R1
+                ["", "", "", "", ""],                                                       # R2
+                ["KEY METRICS DASHBOARD", "", "", "", ""],                                  # R3 (Header)
+                ["Total Potential Revenue", "=E24", "", "Revenue Per Set (E16)", "=E16"],   # R4
+                ["Your Net Profit (The Payout)", "=E25", "", "Profit Per Set", "=E21"],     # R5
+                ["Sets to Break Even", "=E32", "", "Profit Margin %", "=E26"],              # R6
+                ["Giveaway/Damage Buffer", "=E29", "", "Price Floor (Zero Profit)", "=E30"],# R7
+                ["Hoodie Profit post-BE", "=E22", "", "Pants Profit post-BE", "=E23"],      # R8
+                ["Ad-Spend Limit (Keep $1k Profit)", "=E31", "", "Pure Profit per set", "=E21"], # R9
+                ["", "", "", "", ""],                                                       # R10
+                ["", "", "", "", ""],                                                       # R11
                 
-                ["SECTION A — Drop Quantities", ""],                      # R12
-                ["Small Sets", v_small],                                  # R13
-                ["Medium Sets", v_med],                                   # R14
-                ["Large Sets", v_large],                                  # R15
-                ["Total Sets", "=SUM(B13:B15)"],                          # R16
-                ["Pieces per Set (input)", v_pps],                        # R17
-                ["Total Pieces", "=B16*B17"],                             # R18
-                ["", ""],                                                 # R19
+                # Split Sections Start
+                ["SECTION A — Drop Quantities", "", "", "SECTION E — Pricing (INPUTS)", ""],# R12
+                ["Small Sets", v_small, "", "Hoodie Sell Price", v_p_hoodie],               # R13
+                ["Medium Sets", v_med, "", "Pants Sell Price", v_p_pants],                  # R14
+                ["Large Sets", v_large, "", "Set Sell Price (Bundle)", v_p_set],            # R15
+                ["Total Sets", "=SUM(B13:B15)", "", "Revenue Per Set", "=IF(E15>0, E15, E13+E14)"], # R16 (E16)
+                ["Pieces per Set (input)", v_pps, "", "", ""],                              # R17
+                ["Total Pieces", "=B16*B17", "", "", ""],                                   # R18
+                ["", "", "", "", ""],                                                       # R19
                 
-                ["SECTION B — Total Investment (Sunk Cost)", ""],         # R20
-                ["Sample Cost", v_sample],                                # R21
-                ["Bulk Order Cost", v_bulk],                              # R22
-                ["Packaging & Supplies", v_pack],                         # R23
-                ["Shipping to Me", v_ship_me],                            # R24
-                ["Other Costs", v_other],                                 # R25
-                ["Total Investment Spent", "=SUM(B21:B25)"],              # R26
-                ["", ""],                                                 # R27
+                ["SECTION B — Total Investment", "", "", "SECTION F — Profit Breakdown", ""], # R20
+                ["Sample Cost", v_sample, "", "Pure Profit per set", "=E16 - B35"],         # R21 (E21)
+                ["Bulk Order Cost", v_bulk, "", "Hoodie Profit post-BE", "=IF((E13+E14)>0, (E16*(E13/(E13+E14)))-(B35/2), 0)"], # R22
+                ["Packaging & Supplies", v_pack, "", "Pants Profit post-BE", "=IF((E13+E14)>0, (E16*(E14/(E13+E14)))-(B35/2), 0)"],  # R23
+                ["Shipping to Me", v_ship_me, "", "Total Potential Revenue", "=E16*B16"],   # R24 (E24)
+                ["Other Costs", v_other, "", "Your Net Profit (The Payout)", "=E24 - B26"],# R25 (E25)
+                ["Total Investment Spent", "=SUM(B21:B25)", "", "Net Profit Margin %", "=IF(E24>0, E25/E24, 0)"], # R26 (E26)
+                ["", "", "", "", ""],                                                       # R27
                 
-                ["SECTION C — Unit Cost Tracking", ""],                   # R28
-                ["Hoodie Unit Cost", v_c_hoodie],                         # R29
-                ["Pants Unit Cost", v_c_pants],                           # R30
-                ["Set Unit Cost", "=B29+B30"],                            # R31
-                ["Investment per Set (Avg)", "=B26/B16"],                 # R32 (Logic Fix)
-                ["", ""],                                                 # R33
-                
-                ["SECTION D — Order Ops", ""],                            # R34
-                ["Shipping Label Cost per Order", v_label],               # R35
-                ["Variable Cost per Order", "=B35"],                      # R36
-                ["", ""],                                                 # R37
-                
-                ["SECTION E — Pricing (EDIT THESE)", ""],                 # R38
-                ["Hoodie Sell Price", v_p_hoodie],                        # R39
-                ["Pants Sell Price", v_p_pants],                          # R40
-                ["Set Sell Price (Bundle)", v_p_set],                     # R41
-                ["Revenue Per Set", "=IF(B41>0, B41, B39+B40)"],          # R42
-                ["", ""],                                                 # R43
-                
-                ["SECTION F — Profit & Cash Flow", ""],                   # R44
-                ["Pure Profit per set (post-BE)", "=B42 - B36"],          # R45
-                ["Hoodie Split Profit (post-BE)", "=IF((B39+B40)>0, (B42*(B39/(B39+B40)))-(B36/2), 0)"], # R46
-                ["Pants Split Profit (post-BE)", "=IF((B39+B40)>0, (B42*(B40/(B39+B40)))-(B36/2), 0)"],  # R47
-                ["Total Potential Revenue", "=B42*B16"],                  # R48
-                ["Your Net Profit (The Payout)", "=B48 - B26"],           # R49
-                ["Net Profit Margin %", "=IF(B48>0, B49/B48, 0)"],        # R50
-                ["", ""],                                                 # R51
-                
-                ["SECTION G — Break-Even Analysis", ""],                  # R52
-                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"N/A\")"], # R53
-                ["", ""],                                                 # R54
-                
-                ["SECTION H — Risk & Scenarios", ""],                     # R55
-                ["Giveaway/Damage Buffer", "=B16 - B53"],                 # R56 (Logic Fix)
-                ["Price Floor (Zero Profit)", "=(B26 / B16) + B35"],      # R57 (Logic Fix)
-                ["Ad-Spend Limit (Keep $1k Profit)", "=B49 - 1000"],      # R58 (Logic Fix)
+                ["SECTION C — Unit Tracking", "", "", "SECTION H — Risk Scenarios", ""],    # R28
+                ["Hoodie Unit Cost", v_c_hoodie, "", "Giveaway/Damage Buffer", "=B16 - E32"],# R29 (E29)
+                ["Pants Unit Cost", v_c_pants, "", "Price Floor (Zero Profit)", "=(B26/B16) + B35"], # R30
+                ["Set Unit Cost", "=B29+B30", "", "Ad-Spend Limit (Keep $1k Profit)", "=E25 - 1000"], # R31
+                ["Investment per Set (Avg)", "=B26/B16", "", "Sets to Break Even", "=IF(E21>0, CEILING(B26/E21, 1), \"N/A\")"], # R32
             ]
             
             sheet.clear()
             sheet.update("A1", data, value_input_option="USER_ENTERED")
             self._format_sheet(sheet)
             
-            return {'success': True, 'message': '✅ Drop 2 Finance Finalized!'}
+            return {'success': True, 'message': '✅ Split-Screen Layout Applied!'}
             
         except Exception as e:
             self.logger.error(f"Error: {e}", exc_info=True)
@@ -147,75 +121,104 @@ class Drop2Calculator:
     def _format_sheet(self, sheet):
         requests = []
         
-        # 1. Base Setup
+        # 1. Base Setup (White BG, No Grid)
         requests.append({"updateSheetProperties": {"properties": {"sheetId": sheet.id, "gridProperties": {"hideGridlines": True}}, "fields": "gridProperties.hideGridlines"}})
         
-        # 2. Main Title (R1)
-        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 20, "bold": True}, "horizontalAlignment": "CENTER"}}, "fields": "userEnteredFormat"}})
+        # 2. Main Title (R1) - Spanning A:E
+        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 0, "endRowIndex": 1, "startColumnIndex": 0, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 20, "bold": True}, "horizontalAlignment": "CENTER"}}, "fields": "userEnteredFormat"}})
         
         # 3. Navy Headers (Bold White Text) #1C2833
         NAVY = {"red": 0.11, "green": 0.16, "blue": 0.20}
         WHITE = {"red": 1, "green": 1, "blue": 1}
-        header_rows = [2, 11, 19, 27, 33, 37, 43, 51, 54] 
-        for r in header_rows:
+        # Sections A,B,C at 11, 19, 27 (Indices: 11, 19, 27)
+        # Dashboard Header at R3 (Index 2)
+        # Column ranges: A:B and D:E
+        header_indices = [2, 11, 19, 27]
+        for idx in header_indices:
+            # Header on Left side (Cols A-B)
             requests.append({
                 "repeatCell": {
-                    "range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 0, "endColumnIndex": 2},
+                    "range": {"sheetId": sheet.id, "startRowIndex": idx, "endRowIndex": idx+1, "startColumnIndex": 0, "endColumnIndex": 2},
+                    "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 14, "bold": True, "foregroundColor": WHITE}, "backgroundColor": NAVY}},
+                    "fields": "userEnteredFormat"
+                }
+            })
+            # Header on Right side (Cols D-E)
+            requests.append({
+                "repeatCell": {
+                    "range": {"sheetId": sheet.id, "startRowIndex": idx, "endRowIndex": idx+1, "startColumnIndex": 3, "endColumnIndex": 5},
                     "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 14, "bold": True, "foregroundColor": WHITE}, "backgroundColor": NAVY}},
                     "fields": "userEnteredFormat"
                 }
             })
 
-        # 4. Big Metric Values (R4-R10)
-        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 10, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
+        # 4. Big Metric Values in Dashboard (R4-R9)
+        # Columns B (Index 1) and E (Index 4)
+        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 9, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
+        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 9, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
 
-        # Green Highlight for Payout (R5)
+        # Green Highlight for Net Profit (R5, Col B and R25, Col E)
         BRIGHT_GREEN = {"red": 0.85, "green": 0.95, "blue": 0.85}
+        # Dashboard Net Profit (Row 5 indices: 4, Cols A-B)
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 4, "endRowIndex": 5, "startColumnIndex": 0, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": BRIGHT_GREEN}}, "fields": "userEnteredFormat.backgroundColor"}})
+        # Section F Net Profit (Row 25 index: 24, Cols D-E)
+        requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 24, "endRowIndex": 25, "startColumnIndex": 3, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"backgroundColor": BRIGHT_GREEN}}, "fields": "userEnteredFormat.backgroundColor"}})
 
-        # 5. Formats
-        # Currency: R4, R5, R8-R10, R21-R26, R29-R32, R35, R36, R39-R42, R45-R49, R57, R58
-        curr_indices = [(3, 4), (7, 9), (20, 25), (28, 31), (34, 35), (38, 41), (44, 48), (56, 57)]
-        for s, e in curr_indices:
-             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "$#,##0.00"}}}, "fields": "userEnteredFormat.numberFormat"}})
-
-        # Percent: R7, R50
-        pct_indices = [(6, 6), (49, 49)]
-        for s, e in pct_indices:
-             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
-
-        # Whole Number: R6, R7, R53, R56
-        for r in [5, 6, 52, 55]:
-             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}})
-
-        # 6. Colors (Inputs = Yellow, Calcs = Gray)
+        # 5. Colors (Inputs = Yellow, Calcs = Gray)
         YELLOW = {"red": 1.0, "green": 0.98, "blue": 0.85}
         GRAY = {"red": 0.96, "green": 0.96, "blue": 0.96}
         
-        # Logic: We apply gray to everything first, then overwrite yellow for inputs.
-        # Actually, let's be explicit to avoid "white text on white background" issues.
-        # Ensure all non-header background is clean.
-        
-        input_rows = [(12, 14), (16, 16), (20, 24), (28, 29), (34, 34), (38, 40)]
-        for s, e in input_rows:
+        # Yellow Inputs:
+        # Left: A13-A15, A17, B21-B25, B29-B30, B35
+        # Right: E13-E15
+        left_inputs = [(12, 14), (16, 16), (20, 24), (28, 29), (34, 34)]
+        for s, e in left_inputs:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": YELLOW, "textFormat": {"bold": True}}}, "fields": "userEnteredFormat"}})
         
-        calc_rows = [
-            (3, 3), (5, 9),     # Dashboard Calcs
-            (15, 15), (17, 17), # A Calcs
-            (25, 25),           # B Calcs
-            (30, 31),           # C Calcs
-            (35, 36),           # D Calcs
-            (41, 41),           # E Calcs
-            (44, 49),           # F Calcs
-            (52, 52),           # G Calcs
-            (55, 57)            # H Calcs
-        ]
-        for s, e in calc_rows:
-            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
+        right_inputs = [(12, 14)]
+        for s, e in right_inputs:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"backgroundColor": YELLOW, "textFormat": {"bold": True}}}, "fields": "userEnteredFormat"}})
 
-        # 7. Layout
-        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1}, "properties": {"pixelSize": 300}, "fields": "pixelSize"}})
-        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2}, "properties": {"pixelSize": 180}, "fields": "pixelSize"}})
+        # Gray Calcs (Formulas):
+        # Dashboard: B4-B9, E4-E9
+        # Left: B15(R16), B17(R18), B25(R26), B30(R31), B31(R32), B35(R36)
+        # Right: E15(R16), E20...E25, E28...E31
+        dashboard_calcs = [(3, 8)]
+        for s, e in dashboard_calcs:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
+        
+        left_calcs = [(15, 15), (17, 17), (25, 25), (30, 31), (35, 35)]
+        for s, e in left_calcs:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
+        
+        right_calcs = [(15, 15), (20, 25), (28, 31)]
+        for s, e in right_calcs:
+            requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 4, "endColumnIndex": 5}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
+
+        # 6. Currency Formats
+        # All money columns
+        for col in [1, 4]:
+            requests.append({
+                "repeatCell": {
+                    "range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 32, "startColumnIndex": col, "endColumnIndex": col+1},
+                    "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "$#,##0.00"}}},
+                    "fields": "userEnteredFormat.numberFormat"
+                }
+            })
+        # Overwrite Percent rows
+        for rng in [{"r": 5, "c": 4}, {"r": 25, "c": 4}]: # R6(Index 5) and R26(Index 25)
+             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": rng['r'], "endRowIndex": rng['r']+1, "startColumnIndex": rng['c'], "endColumnIndex": rng['c']+1}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
+
+        # Overwrite Whole Number rows (Sets)
+        for rng in [{"r": 5, "c": 1}, {"r": 6, "c": 1}, {"r": 28, "c": 4}, {"r": 31, "c": 4}]: # R6(BE), R7(Gva), R29(Gva), R32(BE)
+             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": rng['r'], "endRowIndex": rng['r']+1, "startColumnIndex": rng['c'], "endColumnIndex": rng['c']+1}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}})
+
+        # 7. Layout (Column Widths)
+        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 0, "endIndex": 1}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
+        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 1, "endIndex": 2}, "properties": {"pixelSize": 120}, "fields": "pixelSize"}})
+        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 2, "endIndex": 3}, "properties": {"pixelSize": 40}, "fields": "pixelSize"}}) # Spacer
+        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 3, "endIndex": 4}, "properties": {"pixelSize": 250}, "fields": "pixelSize"}})
+        requests.append({"updateDimensionProperties": {"range": {"sheetId": sheet.id, "dimension": "COLUMNS", "startIndex": 4, "endIndex": 5}, "properties": {"pixelSize": 120}, "fields": "pixelSize"}})
 
         sheet.spreadsheet.batch_update({"requests": requests})
