@@ -98,17 +98,26 @@ class Drop2Calculator:
             
             # === DASHBOARD (Row 3 start) ===
             # Key Metrics Block
+            # CORRECT MAPPINGS (Based on Rows below):
+            # Revenue Per Set (B42)
+            # Profit Per Set (B45)
+            # Profit Margin % (B50)
+            # Hoodie Profit (B46)
+            # Pants Profit (B47)
+            # Sets to Break Even (B53)
+            # Total Potential Profit (B49)
+            
             data.extend([
                 ["KEY METRICS DASHBOARD", ""],                            # 3 Header
                 
-                ["Revenue Per Set", "=B38"],                              # 4
-                ["Profit Per Set", "=B42"],                               # 5
-                ["Profit Margin %", "=B48"],                              # 6
-                ["Hoodie Profit (unit)", "=B43"],                         # 7
-                ["Pants Profit (unit)", "=B44"],                          # 8
+                ["Revenue Per Set", "=B42"],                              # 4
+                ["Profit Per Set", "=B45"],                               # 5
+                ["Profit Margin %", "=B50"],                              # 6
+                ["Hoodie Profit (unit)", "=B46"],                         # 7
+                ["Pants Profit (unit)", "=B47"],                          # 8
                 
-                ["Sets to Break Even", "=B51"],                           # 9
-                ["Total Potential Profit", "=B47"],                       # 10
+                ["Sets to Break Even", "=B53"],                           # 9
+                ["Total Potential Profit", "=B49"],                       # 10
                 ["", ""],                                                 # 11 Spacer
             ])
             
@@ -178,8 +187,8 @@ class Drop2Calculator:
                 ["Profit Per Set", "=B42 - B31 - B36"],                   # 45
                 
                 # Split Logic
-                ["Hoodie Profit (per unit)", "=(B42 * (B39/(B39+B40))) - B29 - (B36/2)"], # 46
-                ["Pants Profit (per unit)", "=(B42 * (B40/(B39+B40))) - B30 - (B36/2)"],  # 47
+                ["Hoodie Profit (per unit)", "=IF((B39+B40)>0, (B42 * (B39/(B39+B40))) - B29 - (B36/2), 0)"], # 46
+                ["Pants Profit (per unit)", "=IF((B39+B40)>0, (B42 * (B40/(B39+B40))) - B30 - (B36/2), 0)"],  # 47
                 
                 ["Total Potential Revenue", "=B42*B16"],                  # 48
                 ["Total Potential Profit", "=B45*B16"],                   # 49
@@ -190,9 +199,8 @@ class Drop2Calculator:
             # SECTION G: Break-Even
             data.extend([
                 ["SECTION G — Break-Even Analysis", ""],                  # 52
-                ["Sets to Break Even", "=ROUNDUP(IF(B45>0, B26/B45, 0), 0)"], # 53 (Rounded UP)
-                ["Pieces to Break Even", "=B53*B17"],                     # 54
-                ["", ""],                                                 # 55
+                ["Sets to Break Even", "=ROUNDUP(IF(B45>0, B26/B45, 0), 0)"], # 53
+                ["", ""],                                                 # 54 Spacer
             ])
             
             # Clear & Update
