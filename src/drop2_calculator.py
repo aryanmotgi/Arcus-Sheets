@@ -1,10 +1,8 @@
 """
-Drop 2 Finance Calculator (Manual Prediction Sheet)
-
-Final Fixed Version:
-- Exact row references for Dashboard (B42, B45, B50, B53).
-- Break-even formula: CEILING(Total Cost / Profit Per Set) with N/A guardrail.
-- Persistence preserved.
+Drop 2 Finance Calculator (Dynamic Persistence Version)
+- Fully editable: Change any yellow cell and everything updates.
+- Safety: Prevents #DIV/0! errors if prices are set to zero.
+- Logic: High-fidelity ratio-based profit splitting.
 """
 import logging
 from typing import Dict, Any
@@ -18,8 +16,7 @@ class Drop2Calculator:
         self.sheet_name = "Drop 2 Finance Predictions"
 
     def create_prediction_sheet(self) -> Dict[str, Any]:
-        """Creates or updates the Drop 2 Finance Predictions sheet"""
-        self.logger.info("=== SYNC DROP 2 FINANCE PREDICTIONS (FIXED) ===")
+        self.logger.info("=== SYNC DROP 2 FINANCE (DYNAMIC EDITABLE VERSION) ===")
         
         try:
             sheet = self.sheets_manager.create_sheet_if_not_exists(self.sheet_name)
@@ -36,93 +33,76 @@ class Drop2Calculator:
                             if label and val:
                                 existing_values[label] = val
             except Exception as e:
-                self.logger.warning(f"Could not read existing values: {e}")
+                self.logger.warning(f"Persistence read failed: {e}")
 
             def get_val(label, default):
                 saved = existing_values.get(label)
-                if saved and not str(default).startswith("="):
+                if saved and not str(saved).startswith("="):
                     return saved
                 return default
 
-            # --- INPUTS ---
-            v_small = get_val("Small Sets", "14")
-            v_med = get_val("Medium Sets", "20")
-            v_large = get_val("Large Sets", "16")
-            v_pps = get_val("Pieces per Set (input)", "2")
-            v_sample = get_val("Sample Cost", "150.00")
-            v_bulk = get_val("Bulk Order Cost", "1200.00")
-            v_pack = get_val("Packaging & Supplies", "50.00")
-            v_ship_me = get_val("Shipping to Me", "45.00")
-            v_other = get_val("Other Costs", "0.00")
-            v_c_hoodie = get_val("Hoodie Cost (per unit)", "12.00")
-            v_c_pants = get_val("Pants Cost (per unit)", "10.00")
-            v_label = get_val("Shipping Label Cost per Order", "6.44")
-            v_p_hoodie = get_val("Hoodie Sell Price", "45.00")
-            v_p_pants = get_val("Pants Sell Price", "35.00")
-            v_p_set = get_val("Set Sell Price", "80.00")
-            
-            # --- DATA LIST (Exact Row Mapping) ---
+            # --- DATA ARRAY ---
             data = [
                 ["DROP 2 FINANCE PREDICTIONS", ""],                       # R1
                 ["", ""],                                                 # R2
                 ["KEY METRICS DASHBOARD", ""],                            # R3
-                ["Revenue Per Set", "=B42"],                              # R4 -> Points to Section E
-                ["Profit Per Set", "=B45"],                               # R5 -> Points to Section F
-                ["Profit Margin %", "=B50"],                              # R6 -> Points to Section F
-                ["Hoodie Profit (unit)", "=B46"],                         # R7 -> Points to Section F
-                ["Pants Profit (unit)", "=B47"],                          # R8 -> Points to Section F
-                ["Sets to Break Even", "=B53"],                           # R9 -> Points to Section G
-                ["Total Potential Profit", "=B49"],                       # R10 -> Points to Section F
+                ["Revenue Per Set", "=B42"],                              # R4 
+                ["Profit Per Set", "=B45"],                               # R5 
+                ["Profit Margin %", "=B50"],                              # R6 
+                ["Hoodie Profit (unit)", "=B46"],                         # R7 
+                ["Pants Profit (unit)", "=B47"],                          # R8 
+                ["Sets to Break Even", "=B53"],                           # R9 
+                ["Total Potential Profit", "=B49"],                       # R10
                 ["", ""],                                                 # R11
                 
                 ["SECTION A — Drop Quantities", ""],                      # R12
-                ["Small Sets", v_small],                                  # R13
-                ["Medium Sets", v_med],                                   # R14
-                ["Large Sets", v_large],                                  # R15
-                ["Total Sets", "=SUM(B13:B15)"],                          # R16 (B16)
-                ["Pieces per Set (input)", v_pps],                        # R17
-                ["Total Pieces", "=B16*B17"],                             # R18 (B18)
+                ["Small Sets", get_val("Small Sets", "15")],               # R13
+                ["Medium Sets", get_val("Medium Sets", "25")],             # R14
+                ["Large Sets", get_val("Large Sets", "20")],               # R15
+                ["Total Sets", "=SUM(B13:B15)"],                          # R16
+                ["Pieces per Set (input)", get_val("Pieces per Set (input)", "2")], # R17
+                ["Total Pieces", "=B16*B17"],                             # R18
                 ["", ""],                                                 # R19
                 
                 ["SECTION B — Total Costs", ""],                          # R20
-                ["Sample Cost", v_sample],                                # R21
-                ["Bulk Order Cost", v_bulk],                              # R22
-                ["Packaging & Supplies", v_pack],                         # R23
-                ["Shipping to Me", v_ship_me],                            # R24
-                ["Other Costs", v_other],                                 # R25
-                ["Total Drop Cost", "=SUM(B21:B25)"],                     # R26 (B26)
+                ["Sample Cost", get_val("Sample Cost", "150.00")],         # R21
+                ["Bulk Order Cost", get_val("Bulk Order Cost", "1200.00")], # R22
+                ["Packaging & Supplies", get_val("Packaging & Supplies", "50.00")], # R23
+                ["Shipping to Me", get_val("Shipping to Me", "45.00")],    # R24
+                ["Other Costs", get_val("Other Costs", "0.00")],           # R25
+                ["Total Drop Cost", "=SUM(B21:B25)"],                     # R26
                 ["", ""],                                                 # R27
                 
                 ["SECTION C — Unit Cost Breakdown", ""],                  # R28
-                ["Hoodie Cost (per unit)", v_c_hoodie],                   # R29
-                ["Pants Cost (per unit)", v_c_pants],                     # R30
-                ["Cost Per Set (Calculated)", "=B29+B30"],                # R31 (B31)
-                ["Cost Per Piece (Avg)", "=IF(B18>0, B26/B18, 0)"],       # R32 (B32)
+                ["Hoodie Cost (per unit)", get_val("Hoodie Cost (per unit)", "12.00")], # R29
+                ["Pants Cost (per unit)", get_val("Pants Cost (per unit)", "10.00")],   # R30
+                ["Cost Per Set (Calculated)", "=B29+B30"],                # R31
+                ["Cost Per Piece (Avg)", "=IF(B18>0, B26/B18, 0)"],       # R32
                 ["", ""],                                                 # R33
                 
-                ["SECTION D — Shipping Label Cost", ""],                  # R34
-                ["Shipping Label Cost per Order", v_label],               # R35 (B35)
-                ["Shipping Cost Per Set", "=B35"],                        # R36 (B36)
+                ["SECTION D — Shipping Labels", ""],                      # R34
+                ["Shipping Label Cost per Order", get_val("Shipping Label Cost per Order", "6.50")], # R35
+                ["Shipping Cost Per Set", "=B35"],                        # R36
                 ["", ""],                                                 # R37
                 
-                ["SECTION E — Pricing Inputs", ""],                       # R38
-                ["Hoodie Sell Price", v_p_hoodie],                        # R39 (B39)
-                ["Pants Sell Price", v_p_pants],                          # R40 (B40)
-                ["Set Sell Price", v_p_set],                              # R41 (B41)
-                ["Revenue Per Set", "=IF(B41>0, B41, B39+B40)"],          # R42 (B42)
+                ["SECTION E — Pricing (EDIT THESE)", ""],                 # R38
+                ["Hoodie Sell Price", get_val("Hoodie Sell Price", "45.00")], # R39
+                ["Pants Sell Price", get_val("Pants Sell Price", "35.00")],   # R40
+                ["Set Sell Price (Bundle)", get_val("Set Sell Price (Bundle)", "75.00")], # R41
+                ["Revenue Per Set", "=IF(B41>0, B41, B39+B40)"],          # R42
                 ["", ""],                                                 # R43
                 
                 ["SECTION F — Profit Breakdown", ""],                     # R44
-                ["Profit Per Set", "=B42 - B31 - B36"],                   # R45 (B45)
-                ["Hoodie Profit (per unit)", "=(B42 * (B39/(B39+B40))) - B29 - (B36/2)"], # R46 (B46)
-                ["Pants Profit (per unit)", "=(B42 * (B40/(B39+B40))) - B30 - (B36/2)"],  # R47 (B47)
+                ["Profit Per Set", "=B42 - B31 - B36"],                   # R45
+                ["Hoodie Profit (unit)", "=IF((B39+B40)>0, (B42*(B39/(B39+B40)))-B29-(B36/2), 0)"], # R46
+                ["Pants Profit (unit)", "=IF((B39+B40)>0, (B42*(B40/(B39+B40)))-B30-(B36/2), 0)"],  # R47
                 ["Total Potential Revenue", "=B42*B16"],                  # R48
-                ["Total Potential Profit", "=B45*B16"],                   # R49 (B49)
-                ["Profit Margin %", "=IF(B42>0, B45/B42, 0)"],            # R50 (B50)
+                ["Total Potential Profit", "=B45*B16"],                   # R49
+                ["Profit Margin %", "=IF(B42>0, B45/B42, 0)"],            # R50
                 ["", ""],                                                 # R51
                 
                 ["SECTION G — Break-Even Analysis", ""],                  # R52
-                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"N/A\")"], # R53 (B53)
+                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"N/A\")"], # R53
                 ["", ""],                                                 # R54
             ]
             
@@ -130,7 +110,7 @@ class Drop2Calculator:
             sheet.update("A1", data, value_input_option="USER_ENTERED")
             self._format_sheet(sheet)
             
-            return {'success': True, 'message': '✅ Drop 2 Fixed! Refs corrected.'}
+            return {'success': True, 'message': '✅ Drop 2 Finance Rebuilt & Fully Dynamic!'}
             
         except Exception as e:
             self.logger.error(f"Error: {e}", exc_info=True)
@@ -162,13 +142,14 @@ class Drop2Calculator:
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 10, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
 
         # 5. Currency & Percent Formats
-        curr_ranges = [(3, 10), (20, 31), (34, 49)] # Includes Dashboard & Details
+        curr_ranges = [(3, 4), (6, 7), (9, 9), (20, 25), (28, 31), (34, 35), (38, 41), (44, 48)] 
         for start_r, end_r in curr_ranges:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": start_r, "endRowIndex": end_r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "$#,##0.00"}}}, "fields": "userEnteredFormat.numberFormat"}})
         
         # Percent R6, R50
-        for r in [5, 49]:
-             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
+        pct_ranges = [(5, 5), (49, 49)]
+        for r_start, r_end in pct_ranges:
+             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": r_start, "endRowIndex": r_end+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
         # Whole Number (BE Sets R9, R53)
         for r in [8, 52]:
