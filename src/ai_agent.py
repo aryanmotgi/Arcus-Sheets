@@ -225,6 +225,16 @@ class SheetsAIAgent:
                 response['message'] = result.get('message', 'FINANCE tab initialized')
                 response['data'] = result.get('data')
                 return response
+
+            # "create drop 2" - Initialize Drop 2 Finance Predictions (Manual)
+            if 'drop 2' in command_lower and ('create' in command_lower or 'init' in command_lower):
+                from drop2_calculator import Drop2Calculator
+                drop_calc = Drop2Calculator(self.sheets_manager)
+                result = drop_calc.create_prediction_sheet()
+                response['success'] = result.get('success', False)
+                response['message'] = result.get('message', 'Drop 2 Sheet Created')
+                response['data'] = result.get('data')
+                return response
             
             # Sync Agent - handles other sync commands (legacy)
             if any(word in command_lower for word in ['sync', 'update', 'refresh', 'pull', 'fetch', 'get orders']):
