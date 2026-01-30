@@ -107,8 +107,8 @@ class Drop2Calculator:
                 ["Hoodie Profit (unit)", "=B43"],                         # 7
                 ["Pants Profit (unit)", "=B44"],                          # 8
                 
-                ["Sets to Break Even", "=B51"],                           # 9
-                ["Total Potential Profit", "=B47"],                       # 10
+                ["Sets to Break Even", "=B53"],                           # 9
+                ["Total Potential Profit", "=B49"],                       # 10
                 ["", ""],                                                 # 11 Spacer
             ])
             
@@ -190,9 +190,8 @@ class Drop2Calculator:
             # SECTION G: Break-Even
             data.extend([
                 ["SECTION G — Break-Even Analysis", ""],                  # 52
-                ["Sets to Break Even", "=ROUNDUP(IF(B45>0, B26/B45, 0), 0)"], # 53 (Rounded UP)
-                ["Pieces to Break Even", "=B53*B17"],                     # 54
-                ["", ""],                                                 # 55
+                ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"\")"], # 53
+                ["", ""],                                                 # 54
             ])
             
             # Clear & Update
@@ -284,6 +283,12 @@ class Drop2Calculator:
         for start_r, end_r in pct_ranges:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": start_r, "endRowIndex": end_r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
+        # 7b. Break-Even Format (Number, 0 decimals)
+        # Dashboard Index 8 (Row 9), Section G Index 52 (Row 53)
+        be_ranges = [(8, 9), (52, 53)]
+        for start_r, end_r in be_ranges:
+             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": start_r, "endRowIndex": end_r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}})
+
         # 8. Colors: Yellow for Inputs
         YELLOW = {"red": 1.0, "green": 0.98, "blue": 0.9} # Light yellow
         input_indices = [
@@ -299,7 +304,7 @@ class Drop2Calculator:
         # Calculated Cells (Gray)
         GRAY = {"red": 0.96, "green": 0.96, "blue": 0.96}
         calc_indices = [
-            (16, 16), (18, 18), (26, 26), (31, 32), (36, 36), (42, 42), (45, 50), (53, 54)
+            (16, 16), (18, 18), (26, 26), (31, 32), (36, 36), (42, 42), (45, 50), (53, 53)
         ]
         for start_r, end_r in calc_indices:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": start_r, "endRowIndex": end_r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
