@@ -97,7 +97,7 @@ class Drop2Calculator:
                 ["Pieces per Set (input)", v_pps],                        # 16
                 ["Total Pieces", "=B15*B16"],                             # 17
                 ["", ""],                                                 # 18
-            ])
+            ]
             
             # SECTION B: Total Costs (THE INVESTMENT)
             data.extend([
