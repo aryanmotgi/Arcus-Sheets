@@ -1,6 +1,7 @@
 """
-Drop 2 Finance Calculator (Antifragility + Risk Model)
+Drop 2 Finance Calculator (Antifragility + Risk Model v2)
 - Total Investment Model: Focuses on sunk costs and payout.
+- Unit Costs: Added to Section C for reference and price floor logic.
 - Risk & Scenarios: Giveaway buffers, price floor, and ad-spend limits.
 - High Visibility: Navy headers + Bold White text.
 """
@@ -16,7 +17,7 @@ class Drop2Calculator:
         self.sheet_name = "Drop 2 Finance Predictions"
 
     def create_prediction_sheet(self) -> Dict[str, Any]:
-        self.logger.info("=== SYNC DROP 2 FINANCE (ANTIFRAGILITY + RISK) ===")
+        self.logger.info("=== SYNC DROP 2 FINANCE (REFINED ANTIFRAGILITY) ===")
         
         try:
             sheet = self.sheets_manager.create_sheet_if_not_exists(self.sheet_name)
@@ -41,7 +42,7 @@ class Drop2Calculator:
                     return saved
                 return default
 
-            # --- INPUT DEFAULTS (ANTIFRAGILITY) ---
+            # --- INPUT DEFAULTS ---
             v_small = get_val("Small Sets", "14")
             v_med = get_val("Medium Sets", "20")
             v_large = get_val("Large Sets", "16")
@@ -52,6 +53,9 @@ class Drop2Calculator:
             v_pack = get_val("Packaging & Supplies", "50.00")
             v_ship_me = get_val("Shipping to Me", "45.00")
             v_other = get_val("Other Costs", "0.00")
+            
+            v_c_hoodie = get_val("Hoodie Unit Cost", "12.00")
+            v_c_pants = get_val("Pants Unit Cost", "10.00")
             
             v_label = get_val("Shipping Label Cost per Order", "6.44")
             
@@ -65,9 +69,9 @@ class Drop2Calculator:
                 ["", ""],                                                 # R2
                 ["KEY METRICS DASHBOARD", ""],                            # R3
                 ["Total Potential Revenue", "=B48"],                      # R4
-                ["Your Net Profit (The Payout)", "=B49"],                 # R5
+                ["Your Net Profit (The Payout)", "=B49"],                 # R5 (Green Highlight)
                 ["Sets to Break Even", "=B53"],                           # R6
-                ["Giveaway/Damage Buffer", "=B57"],                       # R7 (Ref to Risk Sec)
+                ["Giveaway/Damage Buffer", "=B57"],                       # R7
                 ["Pure Profit per set (post-BE)", "=B45"],                # R8
                 ["Price Floor (Zero Profit)", "=B58"],                    # R9
                 ["Ad-Spend Limit (Keep $1k Profit)", "=B59"],             # R10
@@ -91,11 +95,11 @@ class Drop2Calculator:
                 ["Total Investment Spent", "=SUM(B21:B25)"],              # R26
                 ["", ""],                                                 # R27
                 
-                ["SECTION C — Logic Definitions", ""],                    # R28
-                ["Note", "Production is pre-paid. Profit is revenue-based."], # R29
-                ["Hoodie Cost (unit)", "Ignored in Sunk Cost Model"],     # R30
-                ["Pants Cost (unit)", "Ignored in Sunk Cost Model"],      # R31
-                ["Cost Per Set (Avg)", "=B26/B16"],                       # R32
+                ["SECTION C — Unit Cost Tracking", ""],                   # R28
+                ["Hoodie Unit Cost", v_c_hoodie],                         # R29
+                ["Pants Unit Cost", v_c_pants],                           # R30
+                ["Set Unit Cost", "=B29+B30"],                            # R31
+                ["Investment per Set (Avg)", "=B26/B16"],                 # R32
                 ["", ""],                                                 # R33
                 
                 ["SECTION D — Order Ops", ""],                            # R34
@@ -121,20 +125,19 @@ class Drop2Calculator:
                 
                 ["SECTION G — Break-Even Analysis", ""],                  # R52
                 ["Sets to Break Even", "=IF(B45>0, CEILING(B26/B45, 1), \"N/A\")"], # R53
-                ["Total Potential Margin", "=IF(B48>0, B49/B48, 0)"],     # R54
-                ["", ""],                                                 # R55
+                ["", ""],                                                 # R54
                 
-                ["SECTION H — Risk & Scenarios", ""],                     # R56
-                ["Giveaway/Damage Buffer", "=B16 - B53"],                 # R57
-                ["Price Floor (Zero Profit)", "=(B26 / B16) + B35"],      # R58
-                ["Ad-Spend Limit (Keep $1k Profit)", "=B49 - 1000"],      # R59
+                ["SECTION H — Risk & Scenarios", ""],                     # R55
+                ["Giveaway/Damage Buffer", "=B16 - B53"],                 # R56
+                ["Price Floor (Zero Profit)", "=(B26 / B16) + B35"],      # R57
+                ["Ad-Spend Limit (Keep $1k Profit)", "=B49 - 1000"],      # R58
             ]
             
             sheet.clear()
             sheet.update("A1", data, value_input_option="USER_ENTERED")
             self._format_sheet(sheet)
             
-            return {'success': True, 'message': '✅ Risk Model & Navy Formatting Applied!'}
+            return {'success': True, 'message': '✅ Section C Costs & Risk Model Updated!'}
             
         except Exception as e:
             self.logger.error(f"Error: {e}", exc_info=True)
@@ -152,7 +155,8 @@ class Drop2Calculator:
         # 3. Navy Headers (Bold White Text)
         NAVY = {"red": 0.11, "green": 0.16, "blue": 0.20}
         WHITE = {"red": 1, "green": 1, "blue": 1}
-        header_rows = [2, 11, 19, 27, 33, 37, 43, 51, 55] # Added Risk Header at 55
+        # Header Rows: 2, 11, 19, 27, 33, 37, 43, 51, 54
+        header_rows = [2, 11, 19, 27, 33, 37, 43, 51, 54]
         for r in header_rows:
             requests.append({
                 "repeatCell": {
@@ -162,7 +166,7 @@ class Drop2Calculator:
                 }
             })
 
-        # 4. Big Metric Values (R4-R10)
+        # 4. Dashboard Metrics Setup (R4-R10)
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 3, "endRowIndex": 10, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"textFormat": {"fontSize": 15, "bold": True}}}, "fields": "userEnteredFormat.textFormat"}})
 
         # Green Highlight for Payout (R5)
@@ -170,29 +174,29 @@ class Drop2Calculator:
         requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": 4, "endRowIndex": 5, "startColumnIndex": 0, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": BRIGHT_GREEN}}, "fields": "userEnteredFormat.backgroundColor"}})
 
         # 5. Formats
-        # Currency: R4, R5, R8-R10, R21-R26, R32, R35, R36, R39-R42, R45-R49, R58, R59
-        curr_indices = [(3, 4), (7, 9), (20, 25), (31, 31), (34, 35), (38, 41), (44, 48), (57, 58)]
+        # Currency: R4, R5, R8-R10, R21-R26, R29-R32, R35, R36, R39-R42, R45-R49, R57, R58
+        curr_indices = [(3, 4), (7, 9), (20, 25), (28, 31), (34, 35), (38, 41), (44, 48), (56, 57)]
         for s, e in curr_indices:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "$#,##0.00"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
-        # Percent: R7, R50, R54
-        pct_indices = [(6, 6), (49, 49), (53, 53)]
+        # Percent: R7, R50
+        pct_indices = [(6, 6), (49, 49)]
         for s, e in pct_indices:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "PERCENT", "pattern": "0.0%"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
-        # Whole Number: R6, R7, R53, R57
-        for r in [5, 6, 52, 56]:
+        # Whole Number: R6, R53, R56
+        for r in [5, 52, 55]:
              requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": r, "endRowIndex": r+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"numberFormat": {"type": "NUMBER", "pattern": "0"}}}, "fields": "userEnteredFormat.numberFormat"}})
 
         # 6. Colors (Inputs = Yellow, Calcs = Gray)
         YELLOW = {"red": 1.0, "green": 0.98, "blue": 0.85}
         GRAY = {"red": 0.96, "green": 0.96, "blue": 0.96}
         
-        input_rows = [(12, 14), (16, 16), (20, 24), (34, 34), (38, 40)]
+        input_rows = [(12, 14), (16, 16), (20, 24), (28, 29), (34, 34), (38, 40)]
         for s, e in input_rows:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": YELLOW, "textFormat": {"bold": True}}}, "fields": "userEnteredFormat"}})
         
-        calc_rows = [(3, 3), (5, 9), (15, 15), (17, 17), (25, 25), (29, 32), (35, 36), (41, 50), (52, 53), (56, 58)]
+        calc_rows = [(3, 3), (5, 9), (15, 15), (17, 17), (25, 25), (30, 31), (35, 36), (41, 50), (52, 52), (55, 57)]
         for s, e in calc_rows:
             requests.append({"repeatCell": {"range": {"sheetId": sheet.id, "startRowIndex": s, "endRowIndex": e+1, "startColumnIndex": 1, "endColumnIndex": 2}, "cell": {"userEnteredFormat": {"backgroundColor": GRAY}}, "fields": "userEnteredFormat.backgroundColor"}})
 
